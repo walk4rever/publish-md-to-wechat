@@ -13,7 +13,116 @@ import sys
 import ssl
 import argparse
 import logging
+import urllib.parse
 from datetime import datetime
+
+try:
+    import mistune
+except ImportError:
+    # We will handle the error if mistune is missing later in the process
+    mistune = None
+
+# ============================================================
+# WeChat HTML Renderer (AST-based)
+# ============================================================
+
+class WeChatRenderer(mistune.HTMLRenderer):
+    """Custom renderer for WeChat compatible HTML with inline styles."""
+    
+    def __init__(self, style, style_name):
+        super().__init__()
+        self.style = style
+        self.style_name = style_name
+
+    def heading(self, text, level):
+        s = self.style
+        if level == 1:
+            return (f'<section style="margin-bottom: 40px; border-bottom: {s["border_width"]} '
+                    f'solid {s["text"] if self.style_name != "voltage" else "#fff"}; padding-bottom: 15px;">'
+                    f'<h1 style="font-size: 32px; font-weight: 900; line-height: 1.1; margin: 0; '
+                    f'text-transform: uppercase;">{text}</h1></section>\n')
+        elif level == 2:
+            return (f'<section style="margin-top: 50px; margin-bottom: 20px; border-top: 2px solid {s["text"]}; '
+                    f'padding-top: 15px;"><span style="color: {s["accent"]}; font-size: 20px; '
+                    f'font-weight: 800; text-transform: uppercase;">{text}</span></section>\n')
+        elif level == 3:
+            return (f'<section style="margin-top: 25px; margin-bottom: 10px; border-left: 4px solid {s["accent"]}; '
+                    f'padding-left: 10px;"><span style="font-size: 18px; font-weight: bold;">{text}</span></section>\n')
+        return f'<h{level} style="margin: 20px 0; font-weight: bold;">{text}</h{level}>\n'
+
+    def paragraph(self, text):
+        return f'<p style="font-size: 16px; line-height: 1.8; margin: 15px 0;">{text}</p>\n'
+
+    def block_quote(self, text):
+        s = self.style
+        bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
+        return (f'<section style="margin: 20px 0; padding: 20px; border: 1px solid {s["secondary"]}; '
+                f'background-color: {bg}; border-left: 4px solid {s["accent"]};">'
+                f'<section style="color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">{text}</section></section>\n')
+
+    def block_code(self, code, info=None):
+        s = self.style
+        bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
+        border_color = s["accent"] if self.style_name in ["terminal", "cyber"] else s["secondary"]
+        escaped_code = code.replace('<', '&lt;').replace('>', '&gt;')
+        return (f'<section style="margin: 20px 0; padding: 15px; background-color: {bg}; '
+                f'border: 1px solid {border_color}; border-radius: 4px; overflow-x: auto;">'
+                f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 14px; line-height: 1.5; '
+                f'color: {s["text"]}; white-space: pre;">{escaped_code}</pre></section>\n')
+
+    def list(self, text, ordered, **kwargs):
+        return f'<section style="margin: 15px 0;">{text}</section>\n'
+
+    def list_item(self, text, **kwargs):
+        s = self.style
+        return (f'<section style="margin: 10px 0; display: flex; align-items: flex-start;">'
+                f'<span style="color: {s["accent"]}; font-weight: bold; margin-right: 10px; '
+                f'font-size: 18px; line-height: 1.2;">■</span>'
+                f'<section style="font-size: 15px; line-height: 1.6;">{text}</section></section>\n')
+
+    def strong(self, text):
+        s = self.style
+        color = s["accent"] if self.style_name in ["terminal", "cyber"] else "inherit"
+        return f'<strong style="font-weight: bold; color: {color};">{text}</strong>'
+
+    def codespan(self, text):
+        s = self.style
+        bg = "rgba(255,255,255,0.1)" if s["bg"] != "#ffffff" else "#f0f0f0"
+        return f'<code style="background: {bg}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">{text}</code>'
+
+    def table(self, text):
+        s = self.style
+        return (f'<section style="margin: 25px 0; overflow-x: auto;">'
+                f'<table style="border-collapse: collapse; width: 100%; border: 2px solid {s["text"]}; '
+                f'background-color: {s["bg"]};">{text}</table></section>\n')
+
+    def table_head(self, text):
+        return f'<thead style="background-color: {self.style["text"]}; color: {self.style["bg"]};">{text}</thead>\n'
+
+    def table_body(self, text):
+        return f'<tbody>{text}</tbody>\n'
+
+    def table_row(self, text):
+        return f'<tr>{text}</tr>\n'
+
+    def table_cell(self, text, align=None, head=False):
+        s = self.style
+        tag = 'th' if head else 'td'
+        return f'<{tag} style="border: 1px solid {s["secondary"]}; padding: 10px; font-size: 13px;">{text}</{tag}>'
+
+    def image(self, text, url, alt="", **kwargs):
+        # mistune 3.x uses 'url' as the keyword for the image source
+        caption = alt or text
+        
+        # Suppress technical filenames or Obsidian placeholders from being displayed as captions
+        if caption and (caption.startswith('Pasted image') or re.search(r'\.(png|jpg|jpeg|gif|webp)$', caption, re.I)):
+            caption = ""
+            
+        return (f'<section style="margin: 25px 0; text-align: center;">'
+                f'<img src="{url}" alt="{alt}" style="max-width: 100%; border-radius: 8px; '
+                f'box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: block; margin: 0 auto;">'
+                f'{f"<p style=\"color: #888; font-size: 13px; margin-top: 10px;\">{caption}</p>" if caption else ""}'
+                f'</section>\n')
 
 # ============================================================
 # Logging Configuration
@@ -254,10 +363,63 @@ class WeChatPublisher:
             logger.error(f"Upload failed: {e}")
             raise UploadError(f"Failed to upload thumbnail: {e}")
 
+    def upload_image(self, img_path: str) -> str:
+        """Upload image to WeChat and return permanent URL for use in articles."""
+        logger.info(f"Uploading image to WeChat: {img_path}")
+        
+        # Validate file size (WeChat limit: 2MB)
+        if os.path.getsize(img_path) > 2 * 1024 * 1024:
+            raise UploadError(f"Image too large (>2MB): {img_path}")
+        
+        url = f"https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token={self.access_token}"
+        
+        boundary = "----WeChatPublisherBoundary"
+        with open(img_path, "rb") as f:
+            img_data = f.read()
+        
+        filename = os.path.basename(img_path)
+        ext = filename.split('.')[-1].lower()
+        mime_type = "image/png" if ext == "png" else "image/jpeg"
+        
+        parts = [
+            f"--{boundary}".encode(),
+            f'Content-Disposition: form-data; name="media"; filename="{filename}"'.encode(),
+            f'Content-Type: {mime_type}'.encode(),
+            b"",
+            img_data,
+            f"--{boundary}--".encode(),
+            b""
+        ]
+        body = b"\r\n".join(parts)
+        
+        req = urllib.request.Request(url, data=body)
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        req.add_header("User-Agent", "WeChatPublisher/1.0")
+        
+        try:
+            with urllib.request.urlopen(req, context=ssl._create_unverified_context()) as response:
+                res_data = json.loads(response.read().decode())
+                if "url" in res_data:
+                    logger.info(f"✓ Image uploaded: {res_data['url']}")
+                    return res_data["url"]
+                else:
+                    raise UploadError(f"Failed to get URL: {res_data}")
+        except Exception as e:
+            logger.error(f"Image upload failed: {e}")
+            raise UploadError(f"Failed to upload image: {e}")
+
     def convert_md_to_html(self, md_content: str, style_name: str = "swiss") -> str:
-        """Convert Markdown to WeChat-compatible HTML."""
+        """Convert Markdown to WeChat-compatible HTML using mistune."""
         logger.debug(f"Converting Markdown to HTML with style: {style_name}")
         
+        # Check if mistune is available
+        if mistune is None:
+            logger.error("mistune library not found. Please run ./install.sh")
+            raise ValidationError("Missing dependency: mistune. Please install it first.")
+
+        # 1. Pre-process: Convert Obsidian WikiLink ![[img.png]] to standard MD ![img](<img.png>)
+        processed_md = re.sub(r'!\[\[(.*?)\]\]', r'![\1](<\1>)', md_content)
+
         # Validate style
         if style_name not in self.STYLES:
             logger.warning(f"Unknown style '{style_name}', using 'swiss'")
@@ -265,67 +427,70 @@ class WeChatPublisher:
         
         style = self.STYLES[style_name]
         
-        # Pre-cleaning
-        content = md_content
-        content = re.sub(r'^---+\s*$', '', content, flags=re.M)
-        content = re.sub(r'\*\*(.*?)\*\*', 
-                        f'<strong style="font-weight: bold; color: {style["accent"] if style_name in ["terminal", "cyber"] else "inherit"};">\\1</strong>', 
-                        content)
-        content = re.sub(r'`(.*?)`', 
-                       f'<code style="background: {"rgba(255,255,255,0.1)" if style["bg"] != "#ffffff" else "#f0f0f0"}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">\\1</code>', 
-                       content)
+        # Initialize mistune with custom renderer
+        renderer = WeChatRenderer(style, style_name)
+        markdown = mistune.create_markdown(
+            renderer=renderer,
+            plugins=['strikethrough', 'table']
+        )
         
-        lines = content.split('\n')
-        html_sections = []
-        i = 0
-        in_table = False
+        # Convert content
+        main_html = markdown(processed_md)
         
-        while i < len(lines):
-            line = lines[i].strip()
-            if not line: 
-                i += 1; continue
+        # 2. Post-process: Upload local images and replace URLs
+        img_tags = re.findall(r'<img src="(.*?)"', main_html)
+        
+        # Determine base directory for searching (where the MD is)
+        md_path = sys.argv[-1] if len(sys.argv) > 1 else ""
+        # Get absolute path of the MD file relative to the CURRENT working directory
+        if md_path and not os.path.isabs(md_path):
+            md_path = os.path.join(os.getcwd(), md_path)
             
-            if line.startswith('# '):
-                html_sections.append(f'<section style="margin-bottom: 40px; border-bottom: {style["border_width"]} solid {style["text"] if style_name != "voltage" else "#fff"}; padding-bottom: 15px;"><h1 style="font-size: 32px; font-weight: 900; line-height: 1.1; margin: 0; text-transform: uppercase;">{line[2:]}</h1></section>')
-            elif line.startswith('## '):
-                html_sections.append(f'<section style="margin-top: 50px; margin-bottom: 20px; border-top: 2px solid {style["text"]}; padding-top: 15px;"><span style="color: {style["accent"]}; font-size: 20px; font-weight: 800; text-transform: uppercase;">{line[3:]}</span></section>')
-            elif line.startswith('### '):
-                html_sections.append(f'<section style="margin-top: 25px; margin-bottom: 10px; border-left: 4px solid {style["accent"]}; padding-left: 10px;"><span style="font-size: 18px; font-weight: bold;">{line[4:]}</span></section>')
-            elif line.startswith('> '):
-                html_sections.append(f'<section style="margin: 20px 0; padding: 20px; border: 1px solid {style["secondary"]}; background-color: {"rgba(255,255,255,0.05)" if style["bg"] != "#ffffff" else "#f6f6f6"};"><p style="color: {style["secondary"]}; font-size: 15px; line-height: 1.6; margin: 0;">{line[2:]}</p></section>')
-            elif line.startswith('|'):
-                if not in_table:
-                    html_sections.append(f'<section style="margin: 25px 0; overflow-x: auto;"><table style="border-collapse: collapse; width: 100%; border: 2px solid {style["text"]}; background-color: {style["bg"]};">')
-                    in_table = True
-                    is_header = True
-                    while i < len(lines) and lines[i].strip().startswith('|'):
-                        curr_line = lines[i].strip()
-                        if '---' in curr_line: i += 1; continue
-                        cells = [c.strip() for c in curr_line.split('|') if c.strip()]
-                        html_sections.append('<tr>')
-                        for cell in cells:
-                            bg = style["text"] if is_header else "transparent"
-                            color = style["bg"] if is_header else style["text"]
-                            html_sections.append(f'<td style="border: 1px solid {style["secondary"]}; padding: 10px; font-size: 13px; background-color: {bg}; color: {color}; font-weight: {"bold" if is_header else "normal"};">{cell}</td>')
-                        html_sections.append('</tr>')
-                        is_header = False
-                        i += 1
-                    html_sections.append('</table></section>')
-                    in_table = False
-                    i -= 1
-            elif line.startswith('* '):
-                html_sections.append(f'<section style="margin: 10px 0; display: flex; align-items: flex-start;"><span style="color: {style["accent"]}; font-weight: bold; margin-right: 10px; font-size: 18px; line-height: 1;">■</span><span style="font-size: 15px; line-height: 1.6;">{line[2:]}</span></section>')
-            elif not line.startswith('<'):
-                html_sections.append(f'<p style="font-size: 16px; line-height: 1.8; margin: 15px 0;">{line}</p>')
+        md_dir = os.path.dirname(os.path.abspath(md_path)) if md_path else os.getcwd()
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        for local_path in img_tags:
+            if local_path.startswith(('http://', 'https://')):
+                continue
+            
+            # Decode URL (e.g., %20 -> space) and unescape HTML entities
+            local_path_decoded = urllib.parse.unquote(local_path)
+            filename = os.path.basename(local_path_decoded)
+                
+            # Recursive search for the file
+            found_path = None
+            
+            # Search order:
+            # 1. MD directory and its subdirectories
+            # 2. Project root and its subdirectories
+            search_bases = [md_dir, project_root]
+            
+            logger.info(f"Searching for image '{filename}'...")
+            
+            for base in search_bases:
+                if found_path: break
+                logger.debug(f"  Searching in: {base}")
+                for root, dirs, files in os.walk(base):
+                    if filename in files:
+                        found_path = os.path.join(root, filename)
+                        break
+            
+            if found_path:
+                try:
+                    wechat_url = self.upload_image(found_path)
+                    main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
+                except Exception as e:
+                    logger.warning(f"Failed to upload image {found_path}: {e}")
             else:
-                html_sections.append(line)
-            i += 1
+                logger.warning(f"Image '{filename}' not found in any search path.")
         
+        # Wrap with global container
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
-        footer = f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>'
+        footer = (f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; '
+                 f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
+                 f'text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
         
-        logger.debug(f"✓ Converted {len(lines)} lines to HTML")
-        return header + '\n'.join(html_sections) + footer
+        return header + main_html + footer
 
     def create_draft(self, title: str, html_content: str, thumb_id: str) -> dict:
         """Create a draft in WeChat Official Account."""
@@ -439,6 +604,11 @@ def main():
             gen_script = os.path.join(script_dir, "generate_cover.py")
             auto_thumb = os.path.join(os.path.dirname(script_dir), "assets", "auto_cover.png")
             
+            # Clean up old auto_thumb if exists
+            if os.path.exists(auto_thumb):
+                os.remove(auto_thumb)
+                logger.debug(f"Removed old thumbnail: {auto_thumb}")
+            
             # Generate cover
             cmd = f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"'
             logger.debug(f"Running: {cmd}")
@@ -448,6 +618,7 @@ def main():
                 thumb_path = auto_thumb
                 logger.info(f"✓ Auto-generated cover: {auto_thumb}")
             else:
+                # If generation failed, check if we have a default thumb
                 default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
                 if os.path.exists(default_thumb):
                     thumb_path = default_thumb

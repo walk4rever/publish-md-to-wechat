@@ -68,11 +68,13 @@ def generate_online_png(title: str, style_name: str, output_path: str) -> bool:
     logger.debug(f"Requesting: {url}")
     
     try:
+        # Create unverified context as fallback
+        context = ssl._create_unverified_context()
         req = urllib.request.Request(url, headers={
             'User-Agent': 'WeChatPublisher-CoverGenerator/1.0'
         })
         
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=15, context=context) as response:
             if response.status == 200:
                 with open(output_path, "wb") as f:
                     f.write(response.read())
