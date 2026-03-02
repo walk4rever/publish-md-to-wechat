@@ -554,9 +554,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    # Required arguments
-    parser.add_argument("--id", required=True, help="WeChat AppID")
-    parser.add_argument("--secret", required=True, help="WeChat AppSecret")
+    # Credentials - supports command line args or environment variables
+    # Priority: command line args > environment variables
+    parser.add_argument("--id", 
+                       default=os.environ.get("WECHAT_APP_ID"),
+                       help="WeChat AppID (or set WECHAT_APP_ID env var)")
+    parser.add_argument("--secret", 
+                       default=os.environ.get("WECHAT_APP_SECRET"),
+                       help="WeChat AppSecret (or set WECHAT_APP_SECRET env var)")
     parser.add_argument("--md", required=True, help="Path to MD file")
     
     # Optional arguments
@@ -571,6 +576,13 @@ def main():
                        help="Enable verbose debug logging")
     
     args = parser.parse_args()
+    
+    # Validate credentials (from args or environment variables)
+    app_id = args.id or os.environ.get("WECHAT_APP_ID")
+    app_secret = args.secret or os.environ.get("WECHAT_APP_SECRET")
+    
+    if not app_id or not app_secret:
+        parser.error("Credentials required. Use --id/--secret or set WECHAT_APP_ID/WECHAT_APP_SECRET environment variables.")
     
     # Setup logging
     logger = setup_logging(args.verbose)
@@ -628,7 +640,7 @@ def main():
         
         # Initialize publisher
         logger.info("Initializing WeChat publisher...")
-        publisher = WeChatPublisher(args.id, args.secret, args.verify_ssl)
+        publisher = WeChatPublisher(app_id, app_secret, args.verify_ssl)
         
         # Upload thumbnail
         thumb_id = publisher.upload_thumb(thumb_path)

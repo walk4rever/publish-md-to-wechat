@@ -1,0 +1,48 @@
+# Socket Configuration
+# ====================
+#
+# This file documents the security design and communication patterns
+# for the publish-md-to-wechat project.
+#
+# SECURITY DESIGN PRINCIPLES
+# --------------------------
+#
+# 1. Credential Handling
+#    - Credentials can be provided via:
+#      a) Command line arguments (--id, --secret)
+#      b) Environment variables (WECHAT_APP_ID, WECHAT_APP_SECRET)
+#    - Command line args take priority over environment variables
+#    - Never log or expose credentials in output
+#
+# 2. SSL/TLS Configuration
+#    - SSL verification is DISABLED by default
+#    - This is intentional to handle self-signed certificates and
+#      corporate proxy environments
+#    - Use --verify-ssl flag to enable strict SSL verification
+#    - See SECURITY.md for more details on SSL bypass
+#
+# 3. File Access
+#    - Script reads: Markdown files, images (thumbnails)
+#    - Script writes: Temporary cover images (assets/auto_cover.png)
+#    - Network access: WeChat API (api.weixin.qq.com)
+#
+# 4. Local Communication
+#    - Uses Python standard library (urllib)
+#    - No external socket connections except WeChat API
+#    - Timeout: 30s for API calls, 60s for uploads
+#
+# ENVIRONMENT VARIABLES
+# ---------------------
+# WECHAT_APP_ID      - Your WeChat Official Account AppID
+# WECHAT_APP_SECRET  - Your WeChat Official Account AppSecret
+#
+# EXAMPLE USAGE
+# -------------
+# Via environment variables:
+#   export WECHAT_APP_ID="your_app_id"
+#   export WECHAT_APP_SECRET="your_app_secret"
+#   python3 scripts/wechat_publisher.py --md article.md
+#
+# Via command line:
+#   python3 scripts/wechat_publisher.py --id "your_app_id" --secret "your_app_secret" --md article.md
+#

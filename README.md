@@ -55,6 +55,42 @@ python3 scripts/wechat_publisher.py \
 | `--verify-ssl` | Enable SSL verification (disabled by default) |
 | `-v, --verbose` | Enable verbose debug logging |
 
+### Environment Variables | 环境变量
+
+You can also provide credentials via environment variables instead of command line arguments:
+
+```bash
+# Set environment variables
+export WECHAT_APP_ID="your_app_id"
+export WECHAT_APP_SECRET="your_app_secret"
+
+# Run without --id and --secret
+python3 scripts/wechat_publisher.py --md path/to/article.md
+```
+
+| Variable | Description |
+|----------|-------------|
+| `WECHAT_APP_ID` | Your WeChat Official Account AppID |
+| `WECHAT_APP_SECRET` | Your WeChat Official Account AppSecret |
+
+**Priority**: Command line arguments (`--id`, `--secret`) > Environment variables
+
+### SSL Verification | SSL 验证
+
+⚠️ **SSL verification is DISABLED by default** for the following reasons:
+
+1. **Corporate Networks**: Many corporate proxy environments use self-signed certificates
+2. **Development/Testing**: Local development often uses localhost or test environments
+3. **Compatibility**: Maximum compatibility across different network configurations
+
+To enable strict SSL verification in production:
+
+```bash
+python3 scripts/wechat_publisher.py --verify-ssl --id ... --secret ... --md ...
+```
+
+**Security Note**: Only enable `--verify-ssl` when you trust the network path to WeChat servers. In most production deployments with proper CA certificates, this is recommended.
+
 ### Available Styles | 可用风格
 
 Choose a style that matches your article's tone and content:
@@ -162,6 +198,42 @@ python3 scripts/wechat_publisher.py \
 | `--title` | 文章标题（省略则自动从 MD 检测） |
 | `--verify-ssl` | 启用 SSL 验证（默认关闭） |
 | `-v, --verbose` | 启用详细调试日志 |
+
+### 环境变量 | Environment Variables
+
+你也可以通过环境变量提供凭证，而无需命令行参数：
+
+```bash
+# 设置环境变量
+export WECHAT_APP_ID="your_app_id"
+export WECHAT_APP_SECRET="your_app_secret"
+
+# 运行无需 --id 和 --secret
+python3 scripts/wechat_publisher.py --md 文章.md
+```
+
+| 变量 | 说明 |
+|------|------|
+| `WECHAT_APP_ID` | 微信公众号 AppID |
+| `WECHAT_APP_SECRET` | 微信公众号 AppSecret |
+
+**优先级**：命令行参数 (`--id`, `--secret`) > 环境变量
+
+### SSL 验证 | SSL Verification
+
+⚠️ **SSL 验证默认关闭**，原因如下：
+
+1. **企业网络**：很多企业代理环境使用自签名证书
+2. **开发/测试**：本地开发环境通常使用 localhost 或测试环境
+3. **兼容性**：确保在不同网络配置下的最大兼容性
+
+在生产环境中启用严格的 SSL 验证：
+
+```bash
+python3 scripts/wechat_publisher.py --verify-ssl --id ... --secret ... --md ...
+```
+
+**安全提示**：只有在信任网络路径通往微信服务器时才启用 `--verify-ssl`。在大多数具有正确 CA 证书的生产部署中，建议启用此选项。
 
 ### 可用风格 | Available Styles
 
