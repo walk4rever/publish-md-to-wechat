@@ -1,3 +1,8 @@
+---
+name: publish-md-to-wechat
+description: Automatically format and publish Markdown documents to WeChat Official Account Drafts with professional styles.
+---
+
 # publish-md-to-wechat
 
 Automatically format and publish Markdown documents to WeChat Official Account Drafts with professional styles.
