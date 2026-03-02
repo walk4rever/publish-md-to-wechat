@@ -20,21 +20,27 @@ Use this skill when you need to publish a Markdown file to a WeChat Official Acc
 
 - WeChat **AppID** and **AppSecret** (from mp.weixin.qq.com -> Basic Configuration).
 - Server IP must be added to the **IP Whitelist** in WeChat console.
+- **Setup Environment**: Run `./install.sh` to initialize the virtual environment and dependencies (`mistune`).
 
 ## Usage
 
 ### 1. Simple Publish (Swiss Modern Style)
 
-Invoke the `wechat_publisher.py` script:
+Invoke the publisher using the virtual environment:
 
 ```bash
-python3 scripts/wechat_publisher.py \
+source .venv/bin/activate && python3 scripts/wechat_publisher.py \
   --id YOUR_APP_ID \
   --secret YOUR_APP_SECRET \
   --md path/to/article.md \
-  --thumb path/to/cover.png \
   --style swiss
 ```
+
+### 2. Advanced Features
+
+- **Obsidian Support**: Automatically handles `![[WikiLink]]` image syntax.
+- **Image Auto-Upload**: Searches for local images recursively in the project and uploads them to WeChat servers automatically.
+- **Robust Rendering**: Powered by `mistune` AST parser for perfect nested lists, tables, and code blocks.
 
 ### 2. Available Styles (Adapted from Frontend Slides)
 

@@ -12,18 +12,24 @@
 A specialized AI Agent skill to bridge the gap between Markdown and WeChat Official Account publishing.
 
 ### Core Features
-- **Zero-Dependency Core**: Pure Python implementation that works in any environment.
-- **Agent-Ready Design**: Optimized for CLI tools and AI agents (Claude Code, Cursor, Gemini CLI).
+- **AST-Powered Rendering**: Powered by `mistune` 3.x for 100% reliable conversion of complex Markdown (nested lists, tables, etc.).
+- **Obsidian Ready**: Built-in support for `![[WikiLink]]` image syntax and automatic space handling.
+- **Smart Image Upload**: Automatically searches local directories for images and replaces them with permanent WeChat URLs.
 - **10+ Professional Styles**: Visual presets inherited from `frontend-slides`.
 - **Auto Cover Generation**: Dynamically creates a branded PNG cover based on your title and selected style.
-- **Native Compatibility**: Uses `section` tags and inline CSS for maximum reliability in WeChat.
-- **Comprehensive Error Handling**: Clear error messages with actionable solutions.
-- **Verbose Logging**: Debug mode with `-v` flag for troubleshooting.
 
-### Getting Started
-1. Get your `AppID` and `AppSecret` from the [WeChat Admin Console](https://mp.weixin.qq.com).
-2. Add your current IP to the **Whitelist**.
-3. Use your favorite Agent to run the command described in `SKILL.md`.
+### Quick Start | 快速开始
+
+1. **Initialize Environment**:
+   ```bash
+   ./install.sh
+   ```
+2. **Setup Credentials**: Create a `.env` file with `WECHAT_APP_ID` and `WECHAT_APP_SECRET`.
+3. **Publish**:
+   ```bash
+   source .venv/bin/activate
+   python3 scripts/wechat_publisher.py --md path/to/article.md --style botanical
+   ```
 
 ### Command Line Options
 
@@ -114,18 +120,24 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
 专门为 AI Agent 打造的微信公众号 Markdown 发布技能。
 
 ### 核心功能
-- **零依赖核心**：纯 Python 实现，无需安装复杂库，在任何受限环境下都能运行。
-- **Agent 优先设计**：专门为 Claude Code、Cursor、Gemini CLI 等 AI 驱动工具优化。
-- **10+ 专业风格**：继承自 `frontend-slides` 的精美预设（Swiss, Cyber, Botanical 等）。
-- **封面自动生成**：若未提供封面图，系统将根据标题和所选风格，自动生成一张高颜值的品牌标题卡 (PNG)。
-- **原生兼容性**：利用微信支持的 `section` 标签和 100% 内联 CSS，确保排版不走样。
-- **完善错误处理**：清晰的错误提示和可操作的解决方案。
-- **详细日志**：使用 `-v` 参数启用调试模式。
+- **AST 驱动渲染**：使用 `mistune` 3.x 深度解析，完美处理复杂 Markdown（嵌套列表、代码块、表格）。
+- **Obsidian 友好**：原生支持 `![[WikiLink]]` 语法，并能自动处理含空格的文件名。
+- **智能图片上传**：递归搜索本地目录，自动将本地图片上传至微信素材库并替换为永久 URL。
+- **10+ 专业风格**：继承自 `frontend-slides` 的精美视觉预设（Swiss, Cyber, Botanical 等）。
+- **封面自动生成**：系统将根据标题和风格，自动生成高清 PNG 品牌标题卡。
 
 ### 快速开始
-1. 从 [微信公众平台](https://mp.weixin.qq.com) 获取你的 `AppID` 和 `AppSecret`。
-2. 将你当前的服务器/本地 IP 添加到 **IP 白名单**。
-3. 参考 `SKILL.md` 中的指令，让你的 AI Agent 自动完成转换与推送。
+
+1. **环境初始化**：
+   ```bash
+   ./install.sh
+   ```
+2. **配置凭证**：在 `.env` 中设置 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`。
+3. **一键发布**：
+   ```bash
+   source .venv/bin/activate
+   python3 scripts/wechat_publisher.py --md 文章.md --style botanical
+   ```
 
 ### 命令行参数
 
