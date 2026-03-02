@@ -1,15 +1,97 @@
+#!/usr/bin/env python3
+"""
+WeChat Official Account Markdown Publisher
+With Error Handling and Logging
+"""
+
 import urllib.request
+import urllib.error
 import json
 import re
 import os
 import sys
 import ssl
 import argparse
+import logging
+from datetime import datetime
 
-# Disable SSL verification for broader environment compatibility
-ssl._create_default_https_context = ssl._create_unverified_context
+# ============================================================
+# Logging Configuration
+# ============================================================
+
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Setup logging with console handler."""
+    logger = logging.getLogger("WeChatPublisher")
+    
+    # Set log level
+    level = logging.DEBUG if verbose else logging.INFO
+    logger.setLevel(level)
+    
+    # Clear existing handlers
+    logger.handlers.clear()
+    
+    # Console handler with colored output
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    
+    # Formatter
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    
+    logger.addHandler(console_handler)
+    return logger
+
+# Global logger (initialized in main)
+logger = None
+
+# ============================================================
+# SSL Configuration
+# ============================================================
+
+def configure_ssl(verify: bool = True):
+    """Configure SSL context based on verify flag."""
+    if verify:
+        ssl._create_default_https_context()
+    else:
+        logger.warning("SSL verification disabled - use only for development")
+        ssl._create_default_https_context = ssl._create_unverified_context
+
+
+# ============================================================
+# Custom Exceptions
+# ============================================================
+
+class WeChatPublisherError(Exception):
+    """Base exception for WeChatPublisher."""
+    pass
+
+class AuthError(WeChatPublisherError):
+    """Authentication failed."""
+    pass
+
+class UploadError(WeChatPublisherError):
+    """File upload failed."""
+    pass
+
+class DraftError(WeChatPublisherError):
+    """Draft creation failed."""
+    pass
+
+class ValidationError(WeChatPublisherError):
+    """Input validation failed."""
+    pass
+
+
+# ============================================================
+# Main Publisher Class
+# ============================================================
 
 class WeChatPublisher:
+    """WeChat Official Account Markdown Publisher with error handling."""
+    
     # Styles inherited and adapted from frontend-slides project
     STYLES = {
         "swiss": {
@@ -54,52 +136,144 @@ class WeChatPublisher:
         }
     }
 
-    def __init__(self, app_id, app_secret):
+    def __init__(self, app_id: str, app_secret: str, verify_ssl: bool = False):
+        """Initialize publisher with app credentials."""
+        global logger
+        
+        # Validate inputs
+        if not app_id or not app_secret:
+            raise ValidationError("AppID and AppSecret are required")
+        
         self.app_id = app_id
         self.app_secret = app_secret
+        self.verify_ssl = verify_ssl
+        
+        # Configure SSL
+        configure_ssl(verify_ssl)
+        
+        logger.info(f"Initializing WeChat Publisher for AppID: {app_id[:8]}...")
+        
+        # Get access token
         self.access_token = self._get_access_token()
+        logger.info("✓ Successfully obtained access token")
 
-    def _get_access_token(self):
+    def _get_access_token(self) -> str:
+        """Get WeChat API access token."""
         url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={self.app_id}&secret={self.app_secret}"
+        
+        logger.debug(f"Requesting access token from: {url.split('?')[0]}")
+        
         try:
-            with urllib.request.urlopen(url) as response:
+            req = urllib.request.Request(url, headers={'User-Agent': 'WeChatPublisher/1.0'})
+            with urllib.request.urlopen(req, timeout=30) as response:
                 data = json.loads(response.read().decode())
+                
                 if "access_token" in data:
+                    expires_in = data.get("expires_in", 7200)
+                    logger.debug(f"Access token expires in {expires_in}s")
                     return data["access_token"]
-                raise Exception(f"Failed to get token: {data}")
-        except Exception as e:
-            print(f"Auth Error: {e}")
-            sys.exit(1)
+                
+                # Handle WeChat error codes
+                errcode = data.get("errcode")
+                errmsg = data.get("errmsg", "Unknown error")
+                
+                if errcode == 40164:
+                    raise AuthError(f"IP not whitelisted. Add your server IP to WeChat console. Error: {errmsg}")
+                elif errcode == 40125:
+                    raise AuthError(f"Invalid AppID or AppSecret. Please check your credentials. Error: {errmsg}")
+                elif errcode == 40013:
+                    raise AuthError(f"Invalid AppID. Please verify in WeChat admin console. Error: {errmsg}")
+                else:
+                    raise AuthError(f"Failed to get access token. Error {errcode}: {errmsg}")
+                    
+        except urllib.error.URLError as e:
+            logger.error(f"Network error: {e.reason}")
+            raise AuthError(f"Network error while getting access token: {e.reason}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON response: {e}")
+            raise AuthError(f"Invalid response from WeChat API: {e}")
 
-    def upload_thumb(self, img_path):
+    def upload_thumb(self, img_path: str) -> str:
+        """Upload thumbnail image to WeChat and return media_id."""
+        logger.info(f"Uploading thumbnail: {img_path}")
+        
+        # Validate file exists
+        if not os.path.exists(img_path):
+            raise UploadError(f"Thumbnail file not found: {img_path}")
+        
+        # Validate file size (WeChat limit: 2MB)
+        file_size = os.path.getsize(img_path)
+        if file_size > 2 * 1024 * 1024:
+            raise UploadError(f"Image too large ({file_size / 1024 / 1024:.1f}MB). Must be under 2MB.")
+        
+        # Validate file extension
+        ext = os.path.splitext(img_path)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif']:
+            raise UploadError(f"Unsupported image format: {ext}. Use PNG, JPG, or GIF.")
+        
         url = f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={self.access_token}&type=thumb"
-        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-        with open(img_path, "rb") as f:
-            img_data = f.read()
-        filename = os.path.basename(img_path)
-        parts = []
-        parts.append(f"--{boundary}".encode())
-        parts.append(f'Content-Disposition: form-data; name="media"; filename="{filename}"'.encode())
-        parts.append(b'Content-Type: image/png')
-        parts.append(b"")
-        parts.append(img_data)
-        parts.append(f"--{boundary}--".encode())
-        parts.append(b"")
-        body = b"\r\n".join(parts)
-        req = urllib.request.Request(url, data=body)
-        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-        with urllib.request.urlopen(req) as response:
-            data = json.loads(response.read().decode())
-            return data.get("media_id")
+        
+        boundary = "----WeChatPublisherBoundary"
+        
+        try:
+            with open(img_path, "rb") as f:
+                img_data = f.read()
+            
+            filename = os.path.basename(img_path)
+            
+            parts = [
+                f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="media"; filename="{filename}"'.encode(),
+                b'Content-Type: image/png',
+                b"",
+                img_data,
+                f"--{boundary}--".encode(),
+                b""
+            ]
+            
+            body = b"\r\n".join(parts)
+            req = urllib.request.Request(url, data=body)
+            req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+            req.add_header("User-Agent", "WeChatPublisher/1.0")
+            
+            with urllib.request.urlopen(req, timeout=60) as response:
+                data = json.loads(response.read().decode())
+                
+                if "media_id" in data:
+                    logger.info(f"✓ Thumbnail uploaded successfully, media_id: {data['media_id'][:16]}...")
+                    return data["media_id"]
+                
+                errcode = data.get("errcode")
+                errmsg = data.get("errmsg", "Unknown error")
+                raise UploadError(f"Failed to upload thumbnail. Error {errcode}: {errmsg}")
+                
+        except urllib.error.HTTPError as e:
+            logger.error(f"HTTP error during upload: {e.code} {e.reason}")
+            raise UploadError(f"HTTP error: {e.code} {e.reason}")
+        except Exception as e:
+            logger.error(f"Upload failed: {e}")
+            raise UploadError(f"Failed to upload thumbnail: {e}")
 
-    def convert_md_to_html(self, md_content, style_name="swiss"):
-        style = self.STYLES.get(style_name, self.STYLES["swiss"])
+    def convert_md_to_html(self, md_content: str, style_name: str = "swiss") -> str:
+        """Convert Markdown to WeChat-compatible HTML."""
+        logger.debug(f"Converting Markdown to HTML with style: {style_name}")
+        
+        # Validate style
+        if style_name not in self.STYLES:
+            logger.warning(f"Unknown style '{style_name}', using 'swiss'")
+            style_name = "swiss"
+        
+        style = self.STYLES[style_name]
         
         # Pre-cleaning
         content = md_content
         content = re.sub(r'^---+\s*$', '', content, flags=re.M)
-        content = re.sub(r'\*\*(.*?)\*\*', f'<strong style="font-weight: bold; color: {style["accent"] if style_name in ["terminal", "cyber"] else "inherit"};">\\1</strong>', content)
-        content = re.sub(r'`(.*?)`', f'<code style="background: {"rgba(255,255,255,0.1)" if style["bg"] != "#ffffff" else "#f0f0f0"}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">\\1</code>', content)
+        content = re.sub(r'\*\*(.*?)\*\*', 
+                        f'<strong style="font-weight: bold; color: {style["accent"] if style_name in ["terminal", "cyber"] else "inherit"};">\\1</strong>', 
+                        content)
+        content = re.sub(r'`(.*?)`', 
+                       f'<code style="background: {"rgba(255,255,255,0.1)" if style["bg"] != "#ffffff" else "#f0f0f0"}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">\\1</code>', 
+                       content)
         
         lines = content.split('\n')
         html_sections = []
@@ -149,10 +323,26 @@ class WeChatPublisher:
         
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
         footer = f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>'
+        
+        logger.debug(f"✓ Converted {len(lines)} lines to HTML")
         return header + '\n'.join(html_sections) + footer
 
-    def create_draft(self, title, html_content, thumb_id):
+    def create_draft(self, title: str, html_content: str, thumb_id: str) -> dict:
+        """Create a draft in WeChat Official Account."""
+        logger.info(f"Creating draft: {title}")
+        
+        # Validate inputs
+        if not title or not title.strip():
+            raise DraftError("Title cannot be empty")
+        
+        if not html_content:
+            raise DraftError("HTML content cannot be empty")
+        
+        if not thumb_id:
+            raise DraftError("Thumbnail media_id is required")
+        
         url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={self.access_token}"
+        
         data = {
             "articles": [{
                 "title": title,
@@ -163,53 +353,162 @@ class WeChatPublisher:
                 "need_open_comment": 1
             }]
         }
-        json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
-        req = urllib.request.Request(url, data=json_data, method="POST")
-        req.add_header("Content-Type", "application/json")
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
+        
+        try:
+            json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
+            req = urllib.request.Request(url, data=json_data, method="POST")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("User-Agent", "WeChatPublisher/1.0")
+            
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode())
+                
+                if "media_id" in result:
+                    logger.info(f"✓ Draft created successfully! media_id: {result['media_id']}")
+                    return result
+                
+                errcode = result.get("errcode")
+                errmsg = result.get("errmsg", "Unknown error")
+                raise DraftError(f"Failed to create draft. Error {errcode}: {errmsg}")
+                
+        except urllib.error.HTTPError as e:
+            logger.error(f"HTTP error during draft creation: {e.code}")
+            raise DraftError(f"HTTP error: {e.code} {e.reason}")
+
+
+# ============================================================
+# Main Entry Point
+# ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Publish MD to WeChat Drafts with Frontend Slides Styles")
+    """Main entry point with error handling."""
+    global logger
+    
+    parser = argparse.ArgumentParser(
+        description="Publish MD to WeChat Drafts with Frontend Slides Styles",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Required arguments
     parser.add_argument("--id", required=True, help="WeChat AppID")
     parser.add_argument("--secret", required=True, help="WeChat AppSecret")
     parser.add_argument("--md", required=True, help="Path to MD file")
+    
+    # Optional arguments
     parser.add_argument("--thumb", help="Path to thumb image (optional, will auto-generate if missing)")
-    parser.add_argument("--style", default="swiss", choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"])
-    parser.add_argument("--title", help="Article Title")
+    parser.add_argument("--style", default="swiss", 
+                       choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"],
+                       help="Style preset (default: swiss)")
+    parser.add_argument("--title", help="Article Title (optional, auto-detect from MD)")
+    parser.add_argument("--verify-ssl", action="store_true", default=False, 
+                       help="Enable SSL verification (disabled by default)")
+    parser.add_argument("-v", "--verbose", action="store_true", 
+                       help="Enable verbose debug logging")
     
     args = parser.parse_args()
     
-    with open(args.md, "r", encoding="utf-8") as f:
-        md_content = f.read()
+    # Setup logging
+    logger = setup_logging(args.verbose)
     
-    title_match = re.search(r'^# (.*)$', md_content, re.M)
-    title = args.title or (title_match.group(1) if title_match else "Untitled Article")
-
-    # Intelligent Thumb Handling
-    thumb_path = args.thumb
-    if not thumb_path:
-        print(f"No thumb provided. Auto-generating branded PNG cover for style: {args.style}...")
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        gen_script = os.path.join(script_dir, "generate_cover.py")
-        auto_thumb = "assets/auto_cover.png"
+    logger.info("=" * 50)
+    logger.info("WeChat Markdown Publisher v1.0 (with Error Handling)")
+    logger.info("=" * 50)
+    
+    try:
+        # Validate MD file
+        logger.info(f"Reading Markdown file: {args.md}")
+        if not os.path.exists(args.md):
+            raise ValidationError(f"Markdown file not found: {args.md}")
         
-        # Command to generate cover based on style and title
-        os.system(f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"')
+        with open(args.md, "r", encoding="utf-8") as f:
+            md_content = f.read()
         
-        if os.path.exists(auto_thumb):
-            thumb_path = auto_thumb
-        else:
-            thumb_path = "assets/default_thumb.png"
-            print(f"Generation failed. Falling back to default: {thumb_path}")
+        if not md_content.strip():
+            raise ValidationError("Markdown file is empty")
+        
+        # Extract title from MD or use provided
+        title_match = re.search(r'^# (.*)$', md_content, re.M)
+        title = args.title or (title_match.group(1) if title_match else "Untitled Article")
+        logger.info(f"Article title: {title}")
+        
+        # Handle thumbnail
+        thumb_path = args.thumb
+        if not thumb_path:
+            logger.info(f"No thumb provided. Auto-generating cover for style: {args.style}...")
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            gen_script = os.path.join(script_dir, "generate_cover.py")
+            auto_thumb = os.path.join(os.path.dirname(script_dir), "assets", "auto_cover.png")
+            
+            # Generate cover
+            cmd = f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"'
+            logger.debug(f"Running: {cmd}")
+            result = os.system(cmd)
+            
+            if result == 0 and os.path.exists(auto_thumb):
+                thumb_path = auto_thumb
+                logger.info(f"✓ Auto-generated cover: {auto_thumb}")
+            else:
+                default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
+                if os.path.exists(default_thumb):
+                    thumb_path = default_thumb
+                    logger.warning(f"Generation failed, using default thumbnail")
+                else:
+                    raise ValidationError("No thumbnail provided and auto-generation failed")
+        
+        # Initialize publisher
+        logger.info("Initializing WeChat publisher...")
+        publisher = WeChatPublisher(args.id, args.secret, args.verify_ssl)
+        
+        # Upload thumbnail
+        thumb_id = publisher.upload_thumb(thumb_path)
+        
+        # Convert MD to HTML
+        html = publisher.convert_md_to_html(md_content, args.style)
+        logger.info(f"✓ Converted Markdown to HTML ({len(html)} bytes)")
+        
+        # Create draft
+        result = publisher.create_draft(title, html, thumb_id)
+        
+        # Success
+        logger.info("=" * 50)
+        logger.info("🎉 Successfully published to WeChat Drafts!")
+        logger.info(f"   media_id: {result.get('media_id')}")
+        logger.info("=" * 50)
+        
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+        
+    except ValidationError as e:
+        logger.error(f"Validation Error: {e}")
+        logger.info("Run with --help for usage information")
+        return 1
+        
+    except AuthError as e:
+        logger.error(f"Authentication Error: {e}")
+        logger.info("Please check your AppID and AppSecret, and ensure your IP is whitelisted")
+        return 1
+        
+    except UploadError as e:
+        logger.error(f"Upload Error: {e}")
+        return 1
+        
+    except DraftError as e:
+        logger.error(f"Draft Error: {e}")
+        return 1
+        
+    except WeChatPublisherError as e:
+        logger.error(f"Publisher Error: {e}")
+        return 1
+        
+    except KeyboardInterrupt:
+        logger.info("\n⚠ Cancelled by user")
+        return 130
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        logger.info("Please run with -v flag for more details")
+        return 1
 
-    publisher = WeChatPublisher(args.id, args.secret)
-    thumb_id = publisher.upload_thumb(thumb_path)
-    
-    html = publisher.convert_md_to_html(md_content, args.style)
-    
-    result = publisher.create_draft(title, html, thumb_id)
-    print(json.dumps(result, indent=2))
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
