@@ -49,6 +49,35 @@ python3 scripts/wechat_publisher.py \
 | `--verify-ssl` | Enable SSL verification (disabled by default) |
 | `-v, --verbose` | Enable verbose debug logging |
 
+### Available Styles | 可用风格
+
+Choose a style that matches your article's tone and content:
+
+| Style | Vibe 风格 | Best For 适用场景 |
+| :--- | :--- | :--- |
+| `swiss` | Clean, high-contrast, professional 简洁高对比，专业 | Technical guides, reports 技术指南、报告 |
+| `terminal` | Green text on dark, hacker aesthetic 暗黑终端，黑客风 | Dev tools, coding tips 开发工具、编程技巧 |
+| `bold` | Vibrant cards on dark, high impact 暗黑霓虹，高冲击力 | Product launches, announcements 产品发布、公告 |
+| `botanical` | Elegant, sophisticated, premium 优雅精致，高端 | Artistic pieces, luxury brands 艺术内容、轻奢品牌 |
+| `notebook` | Cream paper with mint accents, tactile 奶油笔记本，薄荷点缀 | Study notes, diaries 学习笔记、日记 |
+| `cyber` | Futuristic navy with cyan glow 未来科技感，霓虹蓝 | AI, tech, web3 topics AI、科技、Web3 |
+| `voltage` | Electric blue with neon yellow 电压蓝，霓虹黄 | Energetic, creative pitches 活力创意演示 |
+| `geometry` | Soft pastels with rounded cards 柔和粉彩，圆角卡片 | Friendly, approachable content 亲和力内容 |
+| `editorial` | Witty, personality-driven, serif 智慧有个性，衬线体 | Opinions, blogs, personal brands 观点、博客、个人品牌 |
+| `ink` | Warm cream with crimson, literary 暖奶油色，朱红点缀 | Storytelling, deep dives 故事叙述、深度内容 |
+
+**Example | 示例**:
+```bash
+# Use Swiss style (default)
+--style swiss
+
+# Use Cyber style for tech articles
+--style cyber
+
+# Use Editorial for blog posts
+--style editorial
+```
+
 ### Error Handling
 
 The publisher provides clear error messages for common issues:
@@ -121,6 +150,35 @@ python3 scripts/wechat_publisher.py \
 | `--title` | 文章标题（省略则自动从 MD 检测） |
 | `--verify-ssl` | 启用 SSL 验证（默认关闭） |
 | `-v, --verbose` | 启用详细调试日志 |
+
+### 可用风格 | Available Styles
+
+选择与文章风格和内容相匹配的样式：
+
+| 风格 | Style | 适用场景 | Best For |
+| :--- | :--- | :--- | :--- |
+| `swiss` | Clean, high-contrast, professional 简洁高对比，专业 | 技术指南、报告 | Technical guides, reports |
+| `terminal` | Green text on dark, hacker aesthetic 暗黑终端，黑客风 | 开发工具、编程技巧 | Dev tools, coding tips |
+| `bold` | Vibrant cards on dark, high impact 暗黑霓虹，高冲击力 | 产品发布、公告 | Product launches, announcements |
+| `botanical` | Elegant, sophisticated, premium 优雅精致，高端 | 艺术内容、轻奢品牌 | Artistic pieces, luxury brands |
+| `notebook` | Cream paper with mint accents, tactile 奶油笔记本，薄荷点缀 | 学习笔记、日记 | Study notes, diaries |
+| `cyber` | Futuristic navy with cyan glow 未来科技感，霓虹蓝 | AI、科技、Web3 | AI, tech, web3 topics |
+| `voltage` | Electric blue with neon yellow 电压蓝，霓虹黄 | 活力创意演示 | Energetic, creative pitches |
+| `geometry` | Soft pastels with rounded cards 柔和粉彩，圆角卡片 | 亲和力内容 | Friendly, approachable content |
+| `editorial` | Witty, personality-driven, serif 智慧有个性，衬线体 | 观点、博客、个人品牌 | Opinions, blogs, personal brands |
+| `ink` | Warm cream with crimson, literary 暖奶油色，朱红点缀 | 故事叙述、深度内容 | Storytelling, deep dives |
+
+**示例 | Example**:
+```bash
+# 使用 Swiss 风格（默认）
+--style swiss
+
+# 科技文章使用 Cyber 风格
+--style cyber
+
+# 博客文章使用 Editorial 风格
+--style editorial
+```
 
 ### 错误处理
 
