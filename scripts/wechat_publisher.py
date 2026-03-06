@@ -23,11 +23,24 @@ try:
     from dotenv import load_dotenv
     # 1. Load from current working directory (User Project) - Priority: High
     load_dotenv()
+    
     # 2. Load from global config (User Home) - Priority: Low
-    global_env = os.path.expanduser("~/.config/publish-md-to-wechat/.env")
+    global_config_dir = os.path.expanduser("~/.config/publish-md-to-wechat")
+    global_env = os.path.join(global_config_dir, ".env")
+    
+    # Common typo fallback: .evn
+    global_evn_typo = os.path.join(global_config_dir, ".evn")
+    
     if os.path.exists(global_env):
         load_dotenv(global_env)
+    elif os.path.exists(global_evn_typo):
+        # Fallback for typo, but warn user
+        print(f"Warning: Found configuration at '{global_evn_typo}'. Please rename it to '.env' for standard compliance.", file=sys.stderr)
+        load_dotenv(global_evn_typo)
+         
 except ImportError:
+    # Warn user if dotenv is missing (but continue, as env vars might be set in shell)
+    print("Warning: python-dotenv not installed. .env files will not be loaded.", file=sys.stderr)
     pass
 
 try:
@@ -877,19 +890,20 @@ def main():
     
     args = parser.parse_args()
     
+    # Setup logging early
+    logger = setup_logging(args.verbose)
+    logger.info("=" * 50)
+    logger.info("WeChat Markdown Publisher v1.2 (Hardened for Agent Runs)")
+    logger.info("=" * 50)
+    
     enable_network = not (args.dry_run or args.validate)
     app_id = (args.id or os.environ.get("WECHAT_APP_ID") or "") if enable_network else (args.id or os.environ.get("WECHAT_APP_ID") or "")
     app_secret = (args.secret or os.environ.get("WECHAT_APP_SECRET") or "") if enable_network else (args.secret or os.environ.get("WECHAT_APP_SECRET") or "")
     
     if enable_network and (not app_id or not app_secret):
-        parser.error("Credentials required for publish mode. Use --id/--secret or set WECHAT_APP_ID/WECHAT_APP_SECRET environment variables.")
-    
-    # Setup logging
-    logger = setup_logging(args.verbose)
-    
-    logger.info("=" * 50)
-    logger.info("WeChat Markdown Publisher v1.1 (Hardened for Agent Runs)")
-    logger.info("=" * 50)
+        logger.error("Missing WeChat credentials!")
+        logger.error(f"Searched in: Command line args, Shell env, Project .env, and Global config (~/.config/publish-md-to-wechat/.env)")
+        parser.error("Credentials required for publish mode. Please set WECHAT_APP_ID/WECHAT_APP_SECRET.")
     
     try:
         # Validate MD file

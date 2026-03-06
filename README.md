@@ -1,6 +1,6 @@
 # Publish MD to WeChat Skill
 
-**Current Version: v0.3.1**
+**Current Version: v0.3.2**
 
 [English](#english) | [Chinese](#chinese)
 
