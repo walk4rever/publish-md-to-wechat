@@ -29,7 +29,7 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 
 2. **Setup Credentials**: 
    ```bash
-   cp .env.example .env
+   cp env.example .env
    # Edit .env and add your WECHAT_APP_ID and WECHAT_APP_SECRET
    ```
    > **Why?** The `.env` file securely stores your WeChat API credentials, allowing the script to authenticate without passing sensitive keys via command line.
@@ -69,7 +69,7 @@ You can provide credentials via a `.env` file (recommended) or shell environment
 
 ```bash
 # 1. Using .env file (recommended)
-cp .env.example .env
+cp env.example .env
 # Edit .env and set your credentials
 
 # 2. Using shell environment variables
@@ -185,7 +185,7 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
 
 2. **配置凭证**：
    ```bash
-   cp .env.example .env
+   cp env.example .env
    # 编辑 .env 文件，填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
    ```
    > **为什么？** `.env` 文件用于安全存储微信公众号 API 密钥，避免在命令行中泄露敏感信息。
@@ -226,7 +226,7 @@ python3 scripts/wechat_publisher.py \
 
 ```bash
 # 1. 使用 .env 文件 (推荐)
-cp .env.example .env
+cp env.example .env
 # 编辑 .env 设置你的凭证
 
 # 2. 使用 shell 环境变量
