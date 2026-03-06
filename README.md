@@ -1,8 +1,8 @@
-# Publish MD to WeChat Skill | 微信公众号 Markdown 极速发布
+# Publish MD to WeChat Skill
 
-**Current Version: v0.2.1**
+**Current Version: v0.3.1**
 
-[English](#english) | [中文](#chinese)
+[English](#english) | [Chinese](#chinese)
 
 ---
 
@@ -18,7 +18,7 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 - **10+ Professional Styles**: Visual presets inherited from `frontend-slides`.
 - **Auto Cover Generation**: Dynamically creates a branded PNG cover based on your title and selected style. Supports local generation (via Pillow) and online fallback.
 
-### Install as Agent Skill | 安装为 Agent 技能
+### Install as Agent Skill
 
 You can install this tool as a skill for your AI Agent (Claude Code, Trae, etc.):
 
@@ -30,7 +30,7 @@ npx skills add https://github.com/walk4rever/publish-md-to-wechat --skill publis
 npx skills update
 ```
 
-### Quick Start | 快速开始
+### Quick Start
 
 1. **Initialize Environment**:
    ```bash
@@ -92,7 +92,7 @@ python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html
 | `--out-html` | Write rendered HTML to a file (dry-run only) |
 | `-v, --verbose` | Enable verbose debug logging |
 
-### Environment Variables | 环境变量
+### Environment Variables
 
 You can provide credentials via a `.env` file (recommended) or shell environment variables:
 
@@ -115,7 +115,7 @@ You can provide credentials via a `.env` file (recommended) or shell environment
 
 Priority: Command line arguments > Project `.env` > Global `.env` > Shell variables.
 
-### SSL Verification | SSL 验证
+### SSL Verification
 
 ✅ **SSL verification is ENABLED by default**.
 
@@ -138,24 +138,24 @@ Default location:
 - macOS: `~/Library/Caches/publish-md-to-wechat/`
 - Linux: `$XDG_CACHE_HOME/publish-md-to-wechat/` or `~/.cache/publish-md-to-wechat/`
 
-### Available Styles | 可用风格
+### Available Styles
 
 Choose a style that matches your article's tone and content:
 
-| Style | Vibe 风格 | Best For 适用场景 |
+| Style | Vibe | Best For |
 | :--- | :--- | :--- |
-| `swiss` | Clean, high-contrast, professional 简洁高对比，专业 | Technical guides, reports 技术指南、报告 |
-| `terminal` | Green text on dark, hacker aesthetic 暗黑终端，黑客风 | Dev tools, coding tips 开发工具、编程技巧 |
-| `bold` | Vibrant cards on dark, high impact 暗黑霓虹，高冲击力 | Product launches, announcements 产品发布、公告 |
-| `botanical` | Elegant, sophisticated, premium 优雅精致，高端 | Artistic pieces, luxury brands 艺术内容、轻奢品牌 |
-| `notebook` | Cream paper with mint accents, tactile 奶油笔记本，薄荷点缀 | Study notes, diaries 学习笔记、日记 |
-| `cyber` | Futuristic navy with cyan glow 未来科技感，霓虹蓝 | AI, tech, web3 topics AI、科技、Web3 |
-| `voltage` | Electric blue with neon yellow 电压蓝，霓虹黄 | Energetic, creative pitches 活力创意演示 |
-| `geometry` | Soft pastels with rounded cards 柔和粉彩，圆角卡片 | Friendly, approachable content 亲和力内容 |
-| `editorial` | Witty, personality-driven, serif 智慧有个性，衬线体 | Opinions, blogs, personal brands 观点、博客、个人品牌 |
-| `ink` | Warm cream with crimson, literary 暖奶油色，朱红点缀 | Storytelling, deep dives 故事叙述、深度内容 |
+| `swiss` | Clean, high-contrast, professional | Technical guides, reports |
+| `terminal` | Green text on dark, hacker aesthetic | Dev tools, coding tips |
+| `bold` | Vibrant cards on dark, high impact | Product launches, announcements |
+| `botanical` | Elegant, sophisticated, premium | Artistic pieces, luxury brands |
+| `notebook` | Cream paper with mint accents, tactile | Study notes, diaries |
+| `cyber` | Futuristic navy with cyan glow | AI, tech, web3 topics |
+| `voltage` | Electric blue with neon yellow | Energetic, creative pitches |
+| `geometry` | Soft pastels with rounded cards | Friendly, approachable content |
+| `editorial` | Witty, personality-driven, serif | Opinions, blogs, personal brands |
+| `ink` | Warm cream with crimson, literary | Storytelling, deep dives |
 
-**Example | 示例**:
+**Example**:
 ```bash
 # Use Swiss style (default)
 --style swiss
@@ -187,9 +187,10 @@ python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
 ```
 
 ### Roadmap (Next Steps)
-- [ ] **Image Auto-Slicing**: Support for long images by automatic slicing to bypass WeChat size limits.
 - [x] **Local Rendering Engine**: Integrated `Pillow` support for offline cover generation.
-- [ ] **Interactive Style Preview**: Command to generate a local HTML preview before pushing.
+- [x] **Global Configuration**: Support for `~/.config` to persist credentials across updates.
+- [x] **Local HTML Preview**: Generate HTML locally (`--dry-run --out-html`) for verification.
+- [ ] **Image Auto-Slicing**: Support for long images by automatic slicing to bypass WeChat size limits.
 - [ ] **Multi-Platform Support**: Extending the engine to support Zhihu and Juejin.
 
 ### Credits
@@ -366,9 +367,10 @@ python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
 ```
 
 ### 下一步优化计划
-- [ ] **长图自动切片**：支持超长内容自动切分为多张图片，解决微信加载限制。
 - [x] **本地绘图引擎集成**：增加 `Pillow` 驱动，支持在无网络环境下生成更复杂的封面。
-- [ ] **本地交互预览**：支持在推送前生成一个本地 HTML 预览文件进行效果确认。
+- [x] **全局配置支持**：支持 `~/.config` 目录，确保 skill 更新后配置不丢失。
+- [x] **本地 HTML 预览**：通过 `--dry-run` 生成本地 HTML 文件进行效果确认。
+- [ ] **长图自动切片**：支持超长内容自动切分为多张图片，解决微信加载限制。
 - [ ] **多平台矩阵**：扩展引擎以支持知乎、掘金等平台的自动同步。
 
 ### 致谢
