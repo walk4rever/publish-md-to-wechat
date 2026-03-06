@@ -275,26 +275,24 @@ python3 scripts/wechat_publisher.py \
 
 你可以通过 `.env` 文件（推荐）或系统环境变量提供凭证：
 
-```bash
-# 1. 使用 .env 文件 (推荐)
-cp env.example .env
-# 编辑 .env 设置你的凭证
+1. **项目级 `.env`** (推荐)：
+   在你的项目根目录（运行命令的地方）创建一个 `.env` 文件。
+   ```bash
+   WECHAT_APP_ID="your_app_id"
+   WECHAT_APP_SECRET="your_app_secret"
+   ```
 
-# 2. 使用 shell 环境变量
-export WECHAT_APP_ID="your_app_id"
-export WECHAT_APP_SECRET="your_app_secret"
+2. **全局配置** (更新时不丢失)：
+   创建 `~/.config/publish-md-to-wechat/.env` 以在所有项目间共享凭证。
+   ```bash
+   mkdir -p ~/.config/publish-md-to-wechat
+   echo 'WECHAT_APP_ID="your_app_id"' > ~/.config/publish-md-to-wechat/.env
+   echo 'WECHAT_APP_SECRET="your_app_secret"' >> ~/.config/publish-md-to-wechat/.env
+   ```
 
-# 运行时无需 --id 和 --secret
-./publish.sh --md path/to/article.md
-```
+**警告**：不要修改安装 Skill 目录（例如 `node_modules` 或 `.claude/skills`）内的 `.env` 文件，因为更新时会被覆盖。
 
-
-| 变量 | 说明 |
-|------|------|
-| `WECHAT_APP_ID` | 微信公众号 AppID |
-| `WECHAT_APP_SECRET` | 微信公众号 AppSecret |
-
-**优先级**：命令行参数 (`--id`, `--secret`) > 环境变量
+**优先级**：命令行参数 > 项目 `.env` > 全局 `.env` > 系统环境变量。
 
 ### SSL 验证 | SSL Verification
 
