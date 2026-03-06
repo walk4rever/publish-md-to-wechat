@@ -36,6 +36,19 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def heading(self, text, level):
         s = self.style
+        # Simplified Swiss style for long articles
+        if self.style_name == "swiss":
+            if level == 1:
+                return (f'<section style="margin: 30px 0 20px; text-align: left; border-bottom: {s["border_width"]} solid {s["accent"]}; padding-bottom: 10px;">'
+                        f'<h1 style="font-size: 28px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h1></section>\n')
+            elif level == 2:
+                return (f'<section style="margin: 35px 0 15px; border-top: 2px solid {s["text"]}; padding-top: 10px;">'
+                        f'<h2 style="font-size: 22px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h2></section>\n')
+            elif level == 3:
+                return (f'<section style="margin: 25px 0 10px; border-left: 4px solid {s["accent"]}; padding-left: 12px;">'
+                        f'<h3 style="font-size: 19px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h3></section>\n')
+        
+        # Original slide-like styles for other presets
         if level == 1:
             return (f'<section style="margin-bottom: 40px; border-bottom: {s["border_width"]} '
                     f'solid {s["text"] if self.style_name != "voltage" else "#fff"}; padding-bottom: 15px;">'
@@ -51,17 +64,35 @@ class WeChatRenderer(mistune.HTMLRenderer):
         return f'<h{level} style="margin: 20px 0; font-weight: bold;">{text}</h{level}>\n'
 
     def paragraph(self, text):
-        return f'<p style="font-size: 16px; line-height: 1.8; margin: 15px 0;">{text}</p>\n'
+        line_height = "1.75" if self.style_name == "swiss" else "1.8"
+        font_size = "15px" if self.style_name == "swiss" else "16px"
+        margin = "16px 0" if self.style_name == "swiss" else "15px 0"
+        return f'<p style="font-size: {font_size}; line-height: {line_height}; margin: {margin}; color: {self.style["text"]};">{text}</p>\n'
 
     def block_quote(self, text):
         s = self.style
-        bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
-        return (f'<section style="margin: 20px 0; padding: 20px; border: 1px solid {s["secondary"]}; '
-                f'background-color: {bg}; border-left: 4px solid {s["accent"]};">'
-                f'<section style="color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">{text}</section></section>\n')
+        if self.style_name == "swiss":
+            return (f'<section style="margin: 25px 0; padding: 20px; background-color: #f9f9f9; '
+                    f'border-left: 5px solid {s["accent"]}; color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">'
+                    f'{text}</section>\n')
+        
+        bg = "#f9f9f9" if s["bg"] == "#ffffff" else "rgba(255,255,255,0.05)"
+        border_color = s["accent"]
+        return (f'<section style="margin: 30px 0; padding: 25px; border: 1px solid #eeeeee; '
+                f'background-color: {bg}; border-left: 6px solid {border_color}; border-radius: 4px;">'
+                f'<section style="color: {s["text"]}; font-size: 15px; line-height: 1.8; '
+                f'font-style: italic; opacity: 0.9;">{text}</section></section>\n')
 
     def block_code(self, code, info=None):
         s = self.style
+        # Simplified code block for swiss
+        if self.style_name == "swiss":
+            escaped_code = code.replace('<', '&lt;').replace('>', '&gt;')
+            return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f6f6f6; '
+                    f'border-radius: 4px; overflow-x: auto; border: 1px solid #eeeeee;">'
+                    f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 13px; line-height: 1.5; '
+                    f'color: #333333; white-space: pre;">{escaped_code}</pre></section>\n')
+        
         bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
         border_color = s["accent"] if self.style_name in ["terminal", "cyber"] else s["secondary"]
         escaped_code = code.replace('<', '&lt;').replace('>', '&gt;')
@@ -71,14 +102,19 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 f'color: {s["text"]}; white-space: pre;">{escaped_code}</pre></section>\n')
 
     def list(self, text, ordered, **kwargs):
-        return f'<section style="margin: 15px 0;">{text}</section>\n'
+        margin = "16px 0" if self.style_name == "swiss" else "15px 0"
+        return f'<section style="margin: {margin};">{text}</section>\n'
 
     def list_item(self, text, **kwargs):
         s = self.style
-        return (f'<section style="margin: 10px 0; display: flex; align-items: flex-start;">'
-                f'<span style="color: {s["accent"]}; font-weight: bold; margin-right: 10px; '
-                f'font-size: 18px; line-height: 1.2;">■</span>'
-                f'<section style="font-size: 15px; line-height: 1.6;">{text}</section></section>\n')
+        bullet = "•" if self.style_name == "swiss" else "■"
+        bullet_size = "18px"
+        margin_right = "8px"
+        
+        return (f'<section style="margin: 8px 0; display: flex; align-items: flex-start;">'
+                f'<span style="color: {s["accent"]}; font-weight: bold; margin-right: {margin_right}; '
+                f'font-size: {bullet_size}; line-height: 1.2;">{bullet}</span>'
+                f'<section style="font-size: 15px; line-height: 1.6; color: {s["text"]};">{text}</section></section>\n')
 
     def strong(self, text):
         s = self.style
@@ -87,28 +123,40 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def codespan(self, text):
         s = self.style
+        if self.style_name == "swiss":
+            return f'<code style="background: #f3f3f3; padding: 2px 4px; font-size: 13px; border-radius: 3px; color: {s["accent"]}; font-family: {s["font"]};">{text}</code>'
         bg = "rgba(255,255,255,0.1)" if s["bg"] != "#ffffff" else "#f0f0f0"
         return f'<code style="background: {bg}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">{text}</code>'
 
     def table(self, text):
         s = self.style
-        return (f'<section style="margin: 25px 0; overflow-x: auto;">'
-                f'<table style="border-collapse: collapse; width: 100%; border: 2px solid {s["text"]}; '
-                f'background-color: {s["bg"]};">{text}</table></section>\n')
+        border_color = "#dddddd" if self.style_name == "swiss" else s["text"]
+        return (f'<section style="margin: 25px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">'
+                f'<table style="border-collapse: collapse; width: 100%; border: 1px solid {border_color}; '
+                f'background-color: {s["bg"]}; font-size: 14px;">{text}</table></section>\n')
 
     def table_head(self, text):
-        return f'<thead style="background-color: {self.style["text"]}; color: {self.style["bg"]};">{text}</thead>\n'
+        s = self.style
+        bg = "#f2f2f2" if self.style_name == "swiss" else s["text"]
+        color = s["text"] if self.style_name == "swiss" else s["bg"]
+        return f'<thead style="background-color: {bg}; color: {color}; font-weight: bold;">{text}</thead>\n'
 
     def table_body(self, text):
+        # We can't easily do nth-child in inline CSS for WeChat, 
+        # but mistune 3.x table_row doesn't give us the index.
+        # We will keep it simple with white background for all rows or 
+        # handle it in a post-processing step if really needed.
         return f'<tbody>{text}</tbody>\n'
 
     def table_row(self, text):
-        return f'<tr>{text}</tr>\n'
+        return f'<tr style="border-bottom: 1px solid #eeeeee;">{text}</tr>\n'
 
     def table_cell(self, text, align=None, head=False):
         s = self.style
         tag = 'th' if head else 'td'
-        return f'<{tag} style="border: 1px solid {s["secondary"]}; padding: 10px; font-size: 13px;">{text}</{tag}>'
+        border = "#dddddd" if self.style_name == "swiss" else s["secondary"]
+        padding = "12px 10px" if head else "10px"
+        return f'<{tag} style="border: 1px solid {border}; padding: {padding}; text-align: {align or "left"};">{text}</{tag}>'
 
     def image(self, text, url, alt="", **kwargs):
         # mistune 3.x uses 'url' as the keyword for the image source
@@ -205,7 +253,7 @@ class WeChatPublisher:
     STYLES = {
         "swiss": {
             "bg": "#ffffff", "accent": "#e62e2e", "text": "#000000", "secondary": "#666666",
-            "font": "Helvetica, Arial, sans-serif", "border_width": "8px"
+            "font": "Helvetica, Arial, sans-serif", "border_width": "3px"
         },
         "terminal": {
             "bg": "#0d1117", "accent": "#39d353", "text": "#e6edf3", "secondary": "#8b949e",
@@ -408,6 +456,45 @@ class WeChatPublisher:
             logger.error(f"Image upload failed: {e}")
             raise UploadError(f"Failed to upload image: {e}")
 
+    def render_md_table_to_html(self, table_str, style):
+        """Manually convert a markdown table string to robust HTML with inline styles."""
+        lines = [line.strip() for line in table_str.strip().split('\n')]
+        if len(lines) < 2: return table_str
+        
+        # Parse headers
+        headers = [c.strip() for c in lines[0].strip('|').split('|')]
+        # Skip separator line (lines[1])
+        rows = []
+        for line in lines[2:]:
+            if '|' in line:
+                rows.append([c.strip() for c in line.strip('|').split('|')])
+        
+        # Build HTML
+        html = [f'<div style="margin: 20px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">']
+        table_border = "#dddddd" if style["bg"] == "#ffffff" else "#444"
+        html.append(f'<table style="border-collapse: collapse; width: 100%; border: 1px solid {table_border}; font-size: 14px; line-height: 1.5; background-color: {style["bg"]};">')
+        
+        # Header
+        head_bg = "#f2f2f2" if style["bg"] == "#ffffff" else style["text"]
+        head_color = style["text"] if style["bg"] == "#ffffff" else style["bg"]
+        html.append(f'<thead style="background-color: {head_bg}; color: {head_color};">')
+        html.append(f'<tr>')
+        for h in headers:
+            html.append(f'<th style="border: 1px solid {table_border}; padding: 12px 10px; font-weight: bold; text-align: left;">{h}</th>')
+        html.append(f'</tr></thead>')
+        
+        # Body
+        html.append(f'<tbody>')
+        for i, row in enumerate(rows):
+            bg = "#fafafa" if i % 2 == 0 and style["bg"] == "#ffffff" else style["bg"]
+            html.append(f'<tr style="background-color: {bg}; border-bottom: 1px solid #eeeeee;">')
+            for cell in row:
+                html.append(f'<td style="border: 1px solid {table_border}; padding: 10px; color: {style["text"]};">{cell}</td>')
+            html.append(f'</tr>')
+        html.append(f'</tbody></table></div>')
+        
+        return "".join(html)
+
     def convert_md_to_html(self, md_content: str, style_name: str = "swiss") -> str:
         """Convert Markdown to WeChat-compatible HTML using mistune."""
         logger.debug(f"Converting Markdown to HTML with style: {style_name}")
@@ -419,14 +506,34 @@ class WeChatPublisher:
 
         # 1. Pre-process: Convert Obsidian WikiLink ![[img.png]] to standard MD ![img](<img.png>)
         processed_md = re.sub(r'!\[\[(.*?)\]\]', r'![\1](<\1>)', md_content)
-
+        
         # Validate style
         if style_name not in self.STYLES:
             logger.warning(f"Unknown style '{style_name}', using 'swiss'")
             style_name = "swiss"
         
         style = self.STYLES[style_name]
-        
+
+        # ULTIMATE PROTECTION v2: Use Placeholders to bypass Markdown parser
+        table_cache = {}
+        def table_placeholder_replacer(match):
+            quote_content = match.group(0)
+            # Find the table part within the quote
+            table_match = re.search(r'((?:^> *\|.*\|\s*)+(?:^> *\|[- :|]+\|\s*)(?:^> *\|.*\|\s*)*)', quote_content, re.MULTILINE)
+            if table_match:
+                raw_table = table_match.group(1)
+                clean_table = re.sub(r'^> *', '', raw_table, flags=re.MULTILINE)
+                html_table = self.render_md_table_to_html(clean_table, style)
+                
+                # Store HTML in cache and return a safe placeholder
+                placeholder_id = f"[[WECHAT_TABLE_{len(table_cache)}]]"
+                table_cache[placeholder_id] = html_table
+                return quote_content.replace(raw_table, "\n" + placeholder_id + "\n")
+            return quote_content
+
+        # Apply placeholder logic
+        processed_md = re.sub(r'(?:^>.*\n?)+', table_placeholder_replacer, processed_md, flags=re.MULTILINE)
+
         # Initialize mistune with custom renderer
         renderer = WeChatRenderer(style, style_name)
         markdown = mistune.create_markdown(
@@ -436,6 +543,13 @@ class WeChatPublisher:
         
         # Convert content
         main_html = markdown(processed_md)
+        
+        # Post-process: Replace placeholders with real HTML
+        for p_id, p_html in table_cache.items():
+            # Mistune might wrap the placeholder in <p> tags, so we replace carefully
+            main_html = main_html.replace(p_id, p_html)
+            # Also handle if it was escaped (though unlikely inside placeholders)
+            main_html = main_html.replace(p_id.replace('[', '&#91;').replace(']', '&#93;'), p_html)
         
         # 2. Post-process: Upload local images and replace URLs
         img_tags = re.findall(r'<img src="(.*?)"', main_html)
@@ -566,9 +680,9 @@ def main():
     
     # Optional arguments
     parser.add_argument("--thumb", help="Path to thumb image (optional, will auto-generate if missing)")
-    parser.add_argument("--style", default="swiss", 
-                       choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"],
-                       help="Style preset (default: swiss)")
+    parser.add_argument("--style", default="swiss",
+                        choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"],
+                        help="Style preset (default: swiss)")
     parser.add_argument("--title", help="Article Title (optional, auto-detect from MD)")
     parser.add_argument("--verify-ssl", action="store_true", default=False, 
                        help="Enable SSL verification (disabled by default)")

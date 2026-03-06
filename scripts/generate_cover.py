@@ -41,7 +41,7 @@ logger = None
 def get_styles() -> dict:
     """Get style configurations."""
     return {
-        "swiss": {"bg": "ffffff", "text": "000000", "fontsize": "60"},
+        "swiss": {"bg": "ffffff", "text": "000000", "fontsize": "55"},
         "terminal": {"bg": "0d1117", "text": "39d353", "fontsize": "50"},
         "cyber": {"bg": "0a0f1c", "text": "00ffcc", "fontsize": "50"},
         "bold": {"bg": "1a1a1a", "text": "ff5722", "fontsize": "60"},
