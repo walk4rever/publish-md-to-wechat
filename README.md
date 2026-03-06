@@ -22,13 +22,18 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 
 1. **Initialize Environment**:
    ```bash
+   chmod +x install.sh
    ./install.sh
    ```
+   > **Why?** This creates a isolated Python virtual environment (`.venv`) and installs all required dependencies (like `mistune` for rendering and `python-dotenv` for config) to ensure the script runs reliably.
+
 2. **Setup Credentials**: 
    ```bash
    cp .env.example .env
    # Edit .env and add your WECHAT_APP_ID and WECHAT_APP_SECRET
    ```
+   > **Why?** The `.env` file securely stores your WeChat API credentials, allowing the script to authenticate without passing sensitive keys via command line.
+
 3. **Publish**:
    ```bash
    source .venv/bin/activate
@@ -174,13 +179,18 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
 
 1. **环境初始化**：
    ```bash
+   chmod +x install.sh
    ./install.sh
    ```
+   > **为什么？** 此脚本会自动创建 Python 虚拟环境 (`.venv`) 并安装所有必需依赖（如渲染引擎 `mistune` 和环境管理 `python-dotenv`），确保脚本能稳定运行而不干扰系统环境。
+
 2. **配置凭证**：
    ```bash
    cp .env.example .env
    # 编辑 .env 文件，填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
    ```
+   > **为什么？** `.env` 文件用于安全存储微信公众号 API 密钥，避免在命令行中泄露敏感信息。
+
 3. **发布文章**：
    ```bash
    source .venv/bin/activate
