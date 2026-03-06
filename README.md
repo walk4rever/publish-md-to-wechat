@@ -36,14 +36,13 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 
 3. **Publish**:
    ```bash
-   source .venv/bin/activate
-   python3 scripts/wechat_publisher.py --md path/to/article.md --style botanical
+   ./publish.sh --md path/to/article.md --style botanical
    ```
 
 ### Command Line Options
 
 ```bash
-python3 scripts/wechat_publisher.py \
+./publish.sh \
   --id YOUR_APP_ID \
   --secret YOUR_APP_SECRET \
   --md path/to/article.md \
@@ -78,7 +77,7 @@ export WECHAT_APP_ID="your_app_id"
 export WECHAT_APP_SECRET="your_app_secret"
 
 # Run without --id and --secret
-python3 scripts/wechat_publisher.py --md path/to/article.md
+./publish.sh --md path/to/article.md
 ```
 
 | Variable | Description |
@@ -99,7 +98,7 @@ python3 scripts/wechat_publisher.py --md path/to/article.md
 To enable strict SSL verification in production:
 
 ```bash
-python3 scripts/wechat_publisher.py --verify-ssl --id ... --secret ... --md ...
+./publish.sh --verify-ssl --id ... --secret ... --md ...
 ```
 
 **Security Note**: Only enable `--verify-ssl` when you trust the network path to WeChat servers. In most production deployments with proper CA certificates, this is recommended.
@@ -193,8 +192,7 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
 
 3. **发布文章**：
    ```bash
-   source .venv/bin/activate
-   python3 scripts/wechat_publisher.py --md path/to/article.md --style botanical
+   ./publish.sh --md path/to/article.md --style botanical
    ```
 
 
@@ -236,7 +234,7 @@ export WECHAT_APP_ID="your_app_id"
 export WECHAT_APP_SECRET="your_app_secret"
 
 # 运行时无需 --id 和 --secret
-python3 scripts/wechat_publisher.py --md path/to/article.md
+./publish.sh --md path/to/article.md
 ```
 
 
@@ -258,7 +256,7 @@ python3 scripts/wechat_publisher.py --md path/to/article.md
 在生产环境中启用严格的 SSL 验证：
 
 ```bash
-python3 scripts/wechat_publisher.py --verify-ssl --id ... --secret ... --md ...
+./publish.sh --verify-ssl --id ... --secret ... --md ...
 ```
 
 **安全提示**：只有在信任网络路径通往微信服务器时才启用 `--verify-ssl`。在大多数具有正确 CA 证书的生产部署中，建议启用此选项。
