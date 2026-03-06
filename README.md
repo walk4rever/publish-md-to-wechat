@@ -16,7 +16,19 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 - **Obsidian Ready**: Built-in support for `![[WikiLink]]` image syntax and automatic space handling.
 - **Smart Image Upload**: Automatically searches local directories for images and replaces them with permanent WeChat URLs.
 - **10+ Professional Styles**: Visual presets inherited from `frontend-slides`.
-- **Auto Cover Generation**: Dynamically creates a branded PNG cover based on your title and selected style.
+- **Auto Cover Generation**: Dynamically creates a branded PNG cover based on your title and selected style. Supports local generation (via Pillow) and online fallback.
+
+### Install as Agent Skill | 安装为 Agent 技能
+
+You can install this tool as a skill for your AI Agent (Claude Code, Trae, etc.):
+
+```bash
+# Install
+npx skills add https://github.com/walk4rever/publish-md-to-wechat --skill publish-md-to-wechat
+
+# Update
+npx skills update
+```
 
 ### Quick Start | 快速开始
 
@@ -25,7 +37,7 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
    chmod +x install.sh
    ./install.sh
    ```
-   > **Why?** This creates a isolated Python virtual environment (`.venv`) and installs all required dependencies (like `mistune` for rendering and `python-dotenv` for config) to ensure the script runs reliably.
+   > **Why?** This creates a isolated Python virtual environment (`.venv`) and installs all required dependencies (including `mistune` for rendering, `Pillow` for cover generation, and `python-dotenv` for config).
 
 2. **Setup Credentials**: 
    ```bash
@@ -84,25 +96,24 @@ python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html
 
 You can provide credentials via a `.env` file (recommended) or shell environment variables:
 
-```bash
-# 1. Using .env file (recommended)
-cp env.example .env
-# Edit .env and set your credentials
+1. **Project-level `.env`** (Recommended):
+   Create a `.env` file in your project root (where you run the command from).
+   ```bash
+   WECHAT_APP_ID="your_app_id"
+   WECHAT_APP_SECRET="your_app_secret"
+   ```
 
-# 2. Using shell environment variables
-export WECHAT_APP_ID="your_app_id"
-export WECHAT_APP_SECRET="your_app_secret"
+2. **Global Config** (Persists across updates):
+   Create `~/.config/publish-md-to-wechat/.env` to share credentials across projects.
+   ```bash
+   mkdir -p ~/.config/publish-md-to-wechat
+   echo 'WECHAT_APP_ID="your_app_id"' > ~/.config/publish-md-to-wechat/.env
+   echo 'WECHAT_APP_SECRET="your_app_secret"' >> ~/.config/publish-md-to-wechat/.env
+   ```
 
-# Run without --id and --secret
-./publish.sh --md path/to/article.md
-```
+**Warning**: Do not modify the `.env` file inside the installed skill directory (e.g., inside `node_modules` or `.claude/skills`), as it will be overwritten during updates.
 
-| Variable | Description |
-|----------|-------------|
-| `WECHAT_APP_ID` | Your WeChat Official Account AppID |
-| `WECHAT_APP_SECRET` | Your WeChat Official Account AppSecret |
-
-**Priority**: Command line arguments (`--id`, `--secret`) > Environment variables
+Priority: Command line arguments > Project `.env` > Global `.env` > Shell variables.
 
 ### SSL Verification | SSL 验证
 
@@ -177,7 +188,7 @@ python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
 
 ### Roadmap (Next Steps)
 - [ ] **Image Auto-Slicing**: Support for long images by automatic slicing to bypass WeChat size limits.
-- [ ] **Local Rendering Engine**: Integrated `Pillow` support for offline cover generation.
+- [x] **Local Rendering Engine**: Integrated `Pillow` support for offline cover generation.
 - [ ] **Interactive Style Preview**: Command to generate a local HTML preview before pushing.
 - [ ] **Multi-Platform Support**: Extending the engine to support Zhihu and Juejin.
 
@@ -196,7 +207,7 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
 - **Obsidian 友好**：原生支持 `![[WikiLink]]` 语法，并能自动处理含空格的文件名。
 - **智能图片上传**：递归搜索本地目录，自动将本地图片上传至微信素材库并替换为永久 URL。
 - **10+ 专业风格**：继承自 `frontend-slides` 的精美视觉预设（Swiss, Cyber, Botanical 等）。
-- **封面自动生成**：系统将根据标题和风格，自动生成高清 PNG 品牌标题卡。
+- **封面自动生成**：系统将根据标题和风格，自动生成高清 PNG 品牌标题卡。支持本地生成（基于 Pillow）与在线降级方案。
 
 ### 快速开始
 
@@ -205,7 +216,7 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
    chmod +x install.sh
    ./install.sh
    ```
-   > **为什么？** 此脚本会自动创建 Python 虚拟环境 (`.venv`) 并安装所有必需依赖（如渲染引擎 `mistune` 和环境管理 `python-dotenv`），确保脚本能稳定运行而不干扰系统环境。
+   > **为什么？** 此脚本会自动创建 Python 虚拟环境 (`.venv`) 并安装所有必需依赖（如渲染引擎 `mistune`、绘图引擎 `Pillow` 和环境管理 `python-dotenv`），确保脚本能稳定运行而不干扰系统环境。
 
 2. **配置凭证**：
    ```bash
@@ -258,7 +269,7 @@ python3 scripts/wechat_publisher.py \
 | `--dry-run` | 渲染 + 校验本地内容，不调用微信 API |
 | `--validate` | 仅校验输入与本地图片，不调用微信 API |
 | `--out-html` | 将渲染后的 HTML 写入文件（仅 dry-run 支持） |
-| `--verify-ssl` | 启用 SSL 验证（默认关闭） |
+| `--verify-ssl` | 启用 SSL 验证（默认开启） |
 
 ### 环境变量 | Environment Variables
 
@@ -358,7 +369,7 @@ python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
 
 ### 下一步优化计划
 - [ ] **长图自动切片**：支持超长内容自动切分为多张图片，解决微信加载限制。
-- [ ] **本地绘图引擎集成**：增加 `Pillow` 驱动，支持在无网络环境下生成更复杂的封面。
+- [x] **本地绘图引擎集成**：增加 `Pillow` 驱动，支持在无网络环境下生成更复杂的封面。
 - [ ] **本地交互预览**：支持在推送前生成一个本地 HTML 预览文件进行效果确认。
 - [ ] **多平台矩阵**：扩展引擎以支持知乎、掘金等平台的自动同步。
 

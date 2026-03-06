@@ -21,7 +21,12 @@ from typing import Optional, Any, Dict
 
 try:
     from dotenv import load_dotenv
+    # 1. Load from current working directory (User Project) - Priority: High
     load_dotenv()
+    # 2. Load from global config (User Home) - Priority: Low
+    global_env = os.path.expanduser("~/.config/publish-md-to-wechat/.env")
+    if os.path.exists(global_env):
+        load_dotenv(global_env)
 except ImportError:
     pass
 
