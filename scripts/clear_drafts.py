@@ -13,6 +13,12 @@ import ssl
 import logging
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # ============================================================
 # Logging Configuration
 # ============================================================

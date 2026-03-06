@@ -24,7 +24,11 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
    ```bash
    ./install.sh
    ```
-2. **Setup Credentials**: Create a `.env` file with `WECHAT_APP_ID` and `WECHAT_APP_SECRET`.
+2. **Setup Credentials**: 
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your WECHAT_APP_ID and WECHAT_APP_SECRET
+   ```
 3. **Publish**:
    ```bash
    source .venv/bin/activate
@@ -57,10 +61,14 @@ python3 scripts/wechat_publisher.py \
 
 ### Environment Variables | 环境变量
 
-You can also provide credentials via environment variables instead of command line arguments:
+You can provide credentials via a `.env` file (recommended) or shell environment variables:
 
 ```bash
-# Set environment variables
+# 1. Using .env file (recommended)
+cp .env.example .env
+# Edit .env and set your credentials
+
+# 2. Using shell environment variables
 export WECHAT_APP_ID="your_app_id"
 export WECHAT_APP_SECRET="your_app_secret"
 
@@ -168,12 +176,17 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
    ```bash
    ./install.sh
    ```
-2. **配置凭证**：在 `.env` 中设置 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`。
-3. **一键发布**：
+2. **配置凭证**：
+   ```bash
+   cp .env.example .env
+   # 编辑 .env 文件，填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
+   ```
+3. **发布文章**：
    ```bash
    source .venv/bin/activate
-   python3 scripts/wechat_publisher.py --md 文章.md --style botanical
+   python3 scripts/wechat_publisher.py --md path/to/article.md --style botanical
    ```
+
 
 ### 命令行参数
 
@@ -201,16 +214,21 @@ python3 scripts/wechat_publisher.py \
 
 ### 环境变量 | Environment Variables
 
-你也可以通过环境变量提供凭证，而无需命令行参数：
+你可以通过 `.env` 文件（推荐）或系统环境变量提供凭证：
 
 ```bash
-# 设置环境变量
+# 1. 使用 .env 文件 (推荐)
+cp .env.example .env
+# 编辑 .env 设置你的凭证
+
+# 2. 使用 shell 环境变量
 export WECHAT_APP_ID="your_app_id"
 export WECHAT_APP_SECRET="your_app_secret"
 
-# 运行无需 --id 和 --secret
-python3 scripts/wechat_publisher.py --md 文章.md
+# 运行时无需 --id 和 --secret
+python3 scripts/wechat_publisher.py --md path/to/article.md
 ```
+
 
 | 变量 | 说明 |
 |------|------|

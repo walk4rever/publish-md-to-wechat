@@ -17,6 +17,12 @@ import urllib.parse
 from datetime import datetime
 
 try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+try:
     import mistune
 except ImportError:
     # We will handle the error if mistune is missing later in the process
