@@ -55,9 +55,9 @@ python3 scripts/wechat_publisher.py \
 
 | Option | Description |
 |--------|-------------|
-| `--id` | WeChat AppID (required) |
-| `--secret` | WeChat AppSecret (required) |
-| `--md` | Path to Markdown file (required) |
+| `--id` | WeChat AppID (Optional if set in `.env`) |
+| `--secret` | WeChat AppSecret (Optional if set in `.env`) |
+| `--md` | Path to Markdown file (Required) |
 | `--thumb` | Path to thumbnail image (optional, auto-generates if missing) |
 | `--style` | Style preset: swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink (default: swiss) |
 | `--title` | Article title (auto-detects from MD if omitted) |
@@ -213,8 +213,8 @@ python3 scripts/wechat_publisher.py \
 
 | 参数 | 说明 |
 |------|------|
-| `--id` | 微信公众号 AppID（必填） |
-| `--secret` | 微信公众号 AppSecret（必填） |
+| `--id` | 微信公众号 AppID（如果在 `.env` 中已配置则可选） |
+| `--secret` | 微信公众号 AppSecret（如果在 `.env` 中已配置则可选） |
 | `--md` | Markdown 文件路径（必填） |
 | `--thumb` | 封面图片路径（可选，不提供则自动生成） |
 | `--style` | 风格预设：swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink（默认：swiss） |
