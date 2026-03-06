@@ -1,6 +1,6 @@
 # Publish MD to WeChat Skill | 微信公众号 Markdown 极速发布
 
-**Current Version: v0.2.0**
+**Current Version: v0.2.1**
 
 [English](#english) | [中文](#chinese)
 
@@ -39,6 +39,19 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
    ./publish.sh --md path/to/article.md --style botanical
    ```
 
+### Common Workflows
+
+```bash
+# 1) Validate only (no WeChat API calls)
+python3 scripts/wechat_publisher.py --validate --md path/to/article.md
+
+# 2) Dry-run render + validate, and save HTML locally (no WeChat API calls)
+python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html /tmp/wechat.html
+
+# 3) Publish to Drafts (requires credentials)
+./publish.sh --md path/to/article.md --style swiss
+```
+
 ### Command Line Options
 
 ```bash
@@ -48,7 +61,7 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
   --md path/to/article.md \
   --thumb path/to/cover.png \
   --style swiss \
-  --verify-ssl \
+  --no-verify-ssl \
   -v  # Enable verbose logging
 ```
 
@@ -60,7 +73,11 @@ A specialized AI Agent skill to bridge the gap between Markdown and WeChat Offic
 | `--thumb` | Path to thumbnail image (optional, auto-generates if missing) |
 | `--style` | Style preset: swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink (default: swiss) |
 | `--title` | Article title (auto-detects from MD if omitted) |
-| `--verify-ssl` | Enable SSL verification (disabled by default) |
+| `--verify-ssl` | Enable SSL verification (default: enabled) |
+| `--no-verify-ssl` | Disable SSL verification (use only for development) |
+| `--dry-run` | Render + validate locally; skip all WeChat API calls |
+| `--validate` | Validate inputs and local images only; skip all WeChat API calls |
+| `--out-html` | Write rendered HTML to a file (dry-run only) |
 | `-v, --verbose` | Enable verbose debug logging |
 
 ### Environment Variables | 环境变量
@@ -89,19 +106,26 @@ export WECHAT_APP_SECRET="your_app_secret"
 
 ### SSL Verification | SSL 验证
 
-⚠️ **SSL verification is DISABLED by default** for the following reasons:
+✅ **SSL verification is ENABLED by default**.
 
-1. **Corporate Networks**: Many corporate proxy environments use self-signed certificates
-2. **Development/Testing**: Local development often uses localhost or test environments
-3. **Compatibility**: Maximum compatibility across different network configurations
-
-To enable strict SSL verification in production:
+If you are behind a corporate proxy / self-signed certificates and requests fail, you can disable it explicitly:
 
 ```bash
-./publish.sh --verify-ssl --id ... --secret ... --md ...
+./publish.sh --no-verify-ssl --id ... --secret ... --md ...
 ```
 
-**Security Note**: Only enable `--verify-ssl` when you trust the network path to WeChat servers. In most production deployments with proper CA certificates, this is recommended.
+**Security Note**: Prefer keeping SSL verification enabled in normal networks.
+
+### Caching (Token + Image)
+
+To make agent runs more stable and avoid repeated uploads, the publisher stores caches on your machine:
+
+- Token cache: `token.<appid>.json`
+- Image cache: `image_cache.<appid>.json`
+
+Default location:
+- macOS: `~/Library/Caches/publish-md-to-wechat/`
+- Linux: `$XDG_CACHE_HOME/publish-md-to-wechat/` or `~/.cache/publish-md-to-wechat/`
 
 ### Available Styles | 可用风格
 
@@ -195,6 +219,19 @@ Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend
    ./publish.sh --md path/to/article.md --style botanical
    ```
 
+### 常用工作流
+
+```bash
+# 1）仅校验（不会调用任何微信 API，不需要 id/secret）
+python3 scripts/wechat_publisher.py --validate --md path/to/article.md
+
+# 2）干跑渲染 + 校验，并把 HTML 保存到本地（不会调用任何微信 API）
+python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html /tmp/wechat.html
+
+# 3）发布到草稿箱（需要凭证）
+./publish.sh --md path/to/article.md --style swiss
+```
+
 
 ### 命令行参数
 
@@ -204,7 +241,7 @@ python3 scripts/wechat_publisher.py \
   --secret 你的APPSECRET \
   --md 文章.md \
   --thumb 封面.png \
-  --style swiss \
+  --no-verify-ssl \
   --verify-ssl \
   -v  # 启用详细日志
 ```
@@ -216,9 +253,12 @@ python3 scripts/wechat_publisher.py \
 | `--md` | Markdown 文件路径（必填） |
 | `--thumb` | 封面图片路径（可选，不提供则自动生成） |
 | `--style` | 风格预设：swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink（默认：swiss） |
-| `--title` | 文章标题（省略则自动从 MD 检测） |
+| `--verify-ssl` | 启用 SSL 验证（默认开启） |
+| `--no-verify-ssl` | 关闭 SSL 验证（仅开发/特殊网络使用） |
+| `--dry-run` | 渲染 + 校验本地内容，不调用微信 API |
+| `--validate` | 仅校验输入与本地图片，不调用微信 API |
+| `--out-html` | 将渲染后的 HTML 写入文件（仅 dry-run 支持） |
 | `--verify-ssl` | 启用 SSL 验证（默认关闭） |
-| `-v, --verbose` | 启用详细调试日志 |
 
 ### 环境变量 | Environment Variables
 
@@ -247,19 +287,26 @@ export WECHAT_APP_SECRET="your_app_secret"
 
 ### SSL 验证 | SSL Verification
 
-⚠️ **SSL 验证默认关闭**，原因如下：
+✅ **SSL 验证默认开启**。
 
-1. **企业网络**：很多企业代理环境使用自签名证书
-2. **开发/测试**：本地开发环境通常使用 localhost 或测试环境
-3. **兼容性**：确保在不同网络配置下的最大兼容性
-
-在生产环境中启用严格的 SSL 验证：
+如果你处在企业代理/自签名证书环境导致请求失败，可显式关闭：
 
 ```bash
-./publish.sh --verify-ssl --id ... --secret ... --md ...
+./publish.sh --no-verify-ssl --id ... --secret ... --md ...
 ```
 
-**安全提示**：只有在信任网络路径通往微信服务器时才启用 `--verify-ssl`。在大多数具有正确 CA 证书的生产部署中，建议启用此选项。
+**安全提示**：正常网络环境建议保持 SSL 验证开启。
+
+### 缓存（Token + 图片）
+
+为了提高 agent 运行稳定性并避免重复上传，脚本会在本机写入缓存：
+
+- Token 缓存：`token.<appid>.json`
+- 图片缓存：`image_cache.<appid>.json`
+
+默认位置：
+- macOS：`~/Library/Caches/publish-md-to-wechat/`
+- Linux：`$XDG_CACHE_HOME/publish-md-to-wechat/` 或 `~/.cache/publish-md-to-wechat/`
 
 ### 可用风格 | Available Styles
 

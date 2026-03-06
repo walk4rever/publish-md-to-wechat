@@ -14,7 +14,10 @@ import ssl
 import argparse
 import logging
 import urllib.parse
+import hashlib
+import time
 from datetime import datetime
+from typing import Optional, Any, Dict
 
 try:
     from dotenv import load_dotenv
@@ -217,10 +220,91 @@ logger = None
 def configure_ssl(verify: bool = True):
     """Configure SSL context based on verify flag."""
     if verify:
-        ssl._create_default_https_context()
+        ssl._create_default_https_context = ssl.create_default_context
     else:
         logger.warning("SSL verification disabled - use only for development")
         ssl._create_default_https_context = ssl._create_unverified_context
+
+
+def _get_cache_dir() -> str:
+    if sys.platform == "darwin":
+        base = os.path.join(os.path.expanduser("~"), "Library", "Caches")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    path = os.path.join(base, "publish-md-to-wechat")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _read_json_file(path: str) -> Optional[Dict[str, Any]]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def _write_json_file_atomic(path: str, data: dict) -> None:
+    tmp_path = f"{path}.tmp.{os.getpid()}"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _ensure_supported_image(path: str) -> None:
+    if not os.path.exists(path):
+        raise UploadError(f"Image not found: {path}")
+    file_size = os.path.getsize(path)
+    if file_size > 2 * 1024 * 1024:
+        raise UploadError(f"Image too large ({file_size / 1024 / 1024:.1f}MB). Must be under 2MB: {path}")
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in [".png", ".jpg", ".jpeg", ".gif"]:
+        raise UploadError(f"Unsupported image format: {ext}. Use PNG, JPG, or GIF: {path}")
+
+
+def _mime_type_for_image(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext == "png":
+        return "image/png"
+    if ext in ["jpg", "jpeg"]:
+        return "image/jpeg"
+    if ext == "gif":
+        return "image/gif"
+    return "application/octet-stream"
+
+
+def _format_wechat_error(errcode: Optional[int], errmsg: Optional[str]) -> str:
+    code = errcode if errcode is not None else "unknown"
+    msg = (errmsg or "Unknown error").strip()
+    hint = None
+    if errcode in [40013]:
+        hint = "Invalid AppID. Verify AppID in WeChat admin console."
+    elif errcode in [40125, 40001]:
+        hint = "Invalid AppSecret or access token. Check credentials and try again."
+    elif errcode in [40164]:
+        hint = "IP not whitelisted. Add your current IP to WeChat console whitelist."
+    elif errcode in [42001]:
+        hint = "Access token expired. Retry; token will refresh automatically."
+    elif errcode in [45009]:
+        hint = "API rate limit reached. Wait and retry."
+    return f"WeChat API Error {code}: {msg}" + (f" | Hint: {hint}" if hint else "")
+
+
+def _raise_if_wechat_error(data: dict, exc_cls: type[WeChatPublisherError], context: str) -> None:
+    if not isinstance(data, dict):
+        raise exc_cls(f"{context}: Invalid response from WeChat API")
+    if "errcode" in data and data.get("errcode") not in [0, None]:
+        raise exc_cls(f"{context}: {_format_wechat_error(data.get('errcode'), data.get('errmsg'))}")
 
 
 # ============================================================
@@ -299,26 +383,87 @@ class WeChatPublisher:
         }
     }
 
-    def __init__(self, app_id: str, app_secret: str, verify_ssl: bool = False):
+    def __init__(self, app_id: Optional[str], app_secret: Optional[str], verify_ssl: bool = True, enable_network: bool = True):
         """Initialize publisher with app credentials."""
         global logger
         
-        # Validate inputs
-        if not app_id or not app_secret:
-            raise ValidationError("AppID and AppSecret are required")
-        
-        self.app_id = app_id
-        self.app_secret = app_secret
+        self.app_id = app_id or ""
+        self.app_secret = app_secret or ""
         self.verify_ssl = verify_ssl
+        self.enable_network = enable_network
         
         # Configure SSL
         configure_ssl(verify_ssl)
+        self.ssl_context = ssl.create_default_context() if verify_ssl else ssl._create_unverified_context()
         
-        logger.info(f"Initializing WeChat Publisher for AppID: {app_id[:8]}...")
+        if not enable_network:
+            logger.info("Network disabled (dry-run/validate mode)")
+            self.access_token = None
+            return
+        
+        if not self.app_id or not self.app_secret:
+            raise ValidationError("AppID and AppSecret are required for publish mode")
+        
+        logger.info(f"Initializing WeChat Publisher for AppID: {self.app_id[:8]}...")
         
         # Get access token
         self.access_token = self._get_access_token()
         logger.info("✓ Successfully obtained access token")
+
+    def _token_cache_path(self) -> str:
+        safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", self.app_id) if self.app_id else "unknown"
+        return os.path.join(_get_cache_dir(), f"token.{safe}.json")
+
+    def _load_cached_access_token(self) -> Optional[str]:
+        data = _read_json_file(self._token_cache_path())
+        if not data:
+            return None
+        token = data.get("access_token")
+        expires_at = data.get("expires_at")
+        if not token or not expires_at:
+            return None
+        try:
+            if float(expires_at) <= time.time():
+                return None
+        except Exception:
+            return None
+        return token
+
+    def _save_access_token(self, token: str, expires_in: int) -> None:
+        skew = 300
+        expires_at = time.time() + max(int(expires_in) - skew, 60)
+        _write_json_file_atomic(self._token_cache_path(), {
+            "access_token": token,
+            "expires_in": int(expires_in),
+            "expires_at": expires_at,
+            "updated_at": time.time(),
+            "app_id": self.app_id,
+        })
+
+    def _image_cache_path(self) -> str:
+        safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", self.app_id) if self.app_id else "unknown"
+        return os.path.join(_get_cache_dir(), f"image_cache.{safe}.json")
+
+    def _load_image_cache(self) -> Dict[str, Any]:
+        return _read_json_file(self._image_cache_path()) or {"version": 1, "items": {}}
+
+    def _save_image_cache(self, cache: Dict[str, Any]) -> None:
+        _write_json_file_atomic(self._image_cache_path(), cache)
+
+    def _get_cached_image_result(self, kind: str, sha256: str) -> Optional[str]:
+        cache = self._load_image_cache()
+        item = (cache.get("items") or {}).get(f"{kind}:{sha256}")
+        if isinstance(item, dict):
+            value = item.get("value")
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _set_cached_image_result(self, kind: str, sha256: str, value: str) -> None:
+        cache = self._load_image_cache()
+        items = cache.setdefault("items", {})
+        items[f"{kind}:{sha256}"] = {"value": value, "updated_at": time.time()}
+        self._save_image_cache(cache)
 
     def _get_access_token(self) -> str:
         """Get WeChat API access token."""
@@ -326,14 +471,23 @@ class WeChatPublisher:
         
         logger.debug(f"Requesting access token from: {url.split('?')[0]}")
         
+        cached = self._load_cached_access_token()
+        if cached:
+            logger.debug("Using cached access token")
+            return cached
+        
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'WeChatPublisher/1.0'})
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=30, context=self.ssl_context) as response:
                 data = json.loads(response.read().decode())
                 
                 if "access_token" in data:
                     expires_in = data.get("expires_in", 7200)
                     logger.debug(f"Access token expires in {expires_in}s")
+                    try:
+                        self._save_access_token(data["access_token"], int(expires_in))
+                    except Exception:
+                        logger.debug("Failed to write token cache")
                     return data["access_token"]
                 
                 # Handle WeChat error codes
@@ -360,19 +514,15 @@ class WeChatPublisher:
         """Upload thumbnail image to WeChat and return media_id."""
         logger.info(f"Uploading thumbnail: {img_path}")
         
-        # Validate file exists
-        if not os.path.exists(img_path):
-            raise UploadError(f"Thumbnail file not found: {img_path}")
+        if not self.enable_network or not self.access_token:
+            raise UploadError("Network disabled; cannot upload thumbnail in dry-run/validate mode")
         
-        # Validate file size (WeChat limit: 2MB)
-        file_size = os.path.getsize(img_path)
-        if file_size > 2 * 1024 * 1024:
-            raise UploadError(f"Image too large ({file_size / 1024 / 1024:.1f}MB). Must be under 2MB.")
-        
-        # Validate file extension
-        ext = os.path.splitext(img_path)[1].lower()
-        if ext not in ['.png', '.jpg', '.jpeg', '.gif']:
-            raise UploadError(f"Unsupported image format: {ext}. Use PNG, JPG, or GIF.")
+        _ensure_supported_image(img_path)
+        sha = _sha256_file(img_path)
+        cached = self._get_cached_image_result("thumb", sha)
+        if cached:
+            logger.info("✓ Thumbnail cache hit")
+            return cached
         
         url = f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={self.access_token}&type=thumb"
         
@@ -383,11 +533,12 @@ class WeChatPublisher:
                 img_data = f.read()
             
             filename = os.path.basename(img_path)
+            mime_type = _mime_type_for_image(img_path)
             
             parts = [
                 f"--{boundary}".encode(),
                 f'Content-Disposition: form-data; name="media"; filename="{filename}"'.encode(),
-                b'Content-Type: image/png',
+                f"Content-Type: {mime_type}".encode(),
                 b"",
                 img_data,
                 f"--{boundary}--".encode(),
@@ -399,16 +550,19 @@ class WeChatPublisher:
             req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
             req.add_header("User-Agent", "WeChatPublisher/1.0")
             
-            with urllib.request.urlopen(req, timeout=60) as response:
+            with urllib.request.urlopen(req, timeout=60, context=self.ssl_context) as response:
                 data = json.loads(response.read().decode())
                 
                 if "media_id" in data:
                     logger.info(f"✓ Thumbnail uploaded successfully, media_id: {data['media_id'][:16]}...")
+                    try:
+                        self._set_cached_image_result("thumb", sha, data["media_id"])
+                    except Exception:
+                        logger.debug("Failed to write thumbnail cache")
                     return data["media_id"]
                 
-                errcode = data.get("errcode")
-                errmsg = data.get("errmsg", "Unknown error")
-                raise UploadError(f"Failed to upload thumbnail. Error {errcode}: {errmsg}")
+                _raise_if_wechat_error(data, UploadError, "Upload thumbnail")
+                raise UploadError("Failed to upload thumbnail: Unknown error")
                 
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error during upload: {e.code} {e.reason}")
@@ -421,9 +575,15 @@ class WeChatPublisher:
         """Upload image to WeChat and return permanent URL for use in articles."""
         logger.info(f"Uploading image to WeChat: {img_path}")
         
-        # Validate file size (WeChat limit: 2MB)
-        if os.path.getsize(img_path) > 2 * 1024 * 1024:
-            raise UploadError(f"Image too large (>2MB): {img_path}")
+        if not self.enable_network or not self.access_token:
+            raise UploadError("Network disabled; cannot upload image in dry-run/validate mode")
+        
+        _ensure_supported_image(img_path)
+        sha = _sha256_file(img_path)
+        cached = self._get_cached_image_result("article_image", sha)
+        if cached:
+            logger.info("✓ Image cache hit")
+            return cached
         
         url = f"https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token={self.access_token}"
         
@@ -432,8 +592,7 @@ class WeChatPublisher:
             img_data = f.read()
         
         filename = os.path.basename(img_path)
-        ext = filename.split('.')[-1].lower()
-        mime_type = "image/png" if ext == "png" else "image/jpeg"
+        mime_type = _mime_type_for_image(img_path)
         
         parts = [
             f"--{boundary}".encode(),
@@ -451,12 +610,17 @@ class WeChatPublisher:
         req.add_header("User-Agent", "WeChatPublisher/1.0")
         
         try:
-            with urllib.request.urlopen(req, context=ssl._create_unverified_context()) as response:
+            with urllib.request.urlopen(req, timeout=60, context=self.ssl_context) as response:
                 res_data = json.loads(response.read().decode())
                 if "url" in res_data:
                     logger.info(f"✓ Image uploaded: {res_data['url']}")
+                    try:
+                        self._set_cached_image_result("article_image", sha, res_data["url"])
+                    except Exception:
+                        logger.debug("Failed to write image cache")
                     return res_data["url"]
                 else:
+                    _raise_if_wechat_error(res_data, UploadError, "Upload image")
                     raise UploadError(f"Failed to get URL: {res_data}")
         except Exception as e:
             logger.error(f"Image upload failed: {e}")
@@ -501,7 +665,7 @@ class WeChatPublisher:
         
         return "".join(html)
 
-    def convert_md_to_html(self, md_content: str, style_name: str = "swiss") -> str:
+    def convert_md_to_html(self, md_content: str, style_name: str = "swiss", md_path: Optional[str] = None, upload_images: bool = True, validate_images: bool = False) -> str:
         """Convert Markdown to WeChat-compatible HTML using mistune."""
         logger.debug(f"Converting Markdown to HTML with style: {style_name}")
         
@@ -560,13 +724,10 @@ class WeChatPublisher:
         # 2. Post-process: Upload local images and replace URLs
         img_tags = re.findall(r'<img src="(.*?)"', main_html)
         
-        # Determine base directory for searching (where the MD is)
-        md_path = sys.argv[-1] if len(sys.argv) > 1 else ""
-        # Get absolute path of the MD file relative to the CURRENT working directory
-        if md_path and not os.path.isabs(md_path):
-            md_path = os.path.join(os.getcwd(), md_path)
-            
-        md_dir = os.path.dirname(os.path.abspath(md_path)) if md_path else os.getcwd()
+        md_abs = md_path or ""
+        if md_abs and not os.path.isabs(md_abs):
+            md_abs = os.path.join(os.getcwd(), md_abs)
+        md_dir = os.path.dirname(os.path.abspath(md_abs)) if md_abs else os.getcwd()
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         for local_path in img_tags:
@@ -597,8 +758,12 @@ class WeChatPublisher:
             
             if found_path:
                 try:
-                    wechat_url = self.upload_image(found_path)
-                    main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
+                    if validate_images:
+                        _ensure_supported_image(found_path)
+                        logger.info(f"✓ Image OK: {found_path}")
+                    if upload_images:
+                        wechat_url = self.upload_image(found_path)
+                        main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
                 except Exception as e:
                     logger.warning(f"Failed to upload image {found_path}: {e}")
             else:
@@ -615,6 +780,9 @@ class WeChatPublisher:
     def create_draft(self, title: str, html_content: str, thumb_id: str) -> dict:
         """Create a draft in WeChat Official Account."""
         logger.info(f"Creating draft: {title}")
+        
+        if not self.enable_network or not self.access_token:
+            raise DraftError("Network disabled; cannot create draft in dry-run/validate mode")
         
         # Validate inputs
         if not title or not title.strip():
@@ -645,16 +813,15 @@ class WeChatPublisher:
             req.add_header("Content-Type", "application/json")
             req.add_header("User-Agent", "WeChatPublisher/1.0")
             
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=30, context=self.ssl_context) as response:
                 result = json.loads(response.read().decode())
                 
                 if "media_id" in result:
                     logger.info(f"✓ Draft created successfully! media_id: {result['media_id']}")
                     return result
                 
-                errcode = result.get("errcode")
-                errmsg = result.get("errmsg", "Unknown error")
-                raise DraftError(f"Failed to create draft. Error {errcode}: {errmsg}")
+                _raise_if_wechat_error(result, DraftError, "Create draft")
+                raise DraftError("Failed to create draft: Unknown error")
                 
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error during draft creation: {e.code}")
@@ -690,25 +857,33 @@ def main():
                         choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"],
                         help="Style preset (default: swiss)")
     parser.add_argument("--title", help="Article Title (optional, auto-detect from MD)")
-    parser.add_argument("--verify-ssl", action="store_true", default=False, 
-                       help="Enable SSL verification (disabled by default)")
+    parser.add_argument("--verify-ssl", dest="verify_ssl", action="store_true",
+                       help="Enable SSL verification (default: enabled)")
+    parser.add_argument("--no-verify-ssl", dest="verify_ssl", action="store_false",
+                       help="Disable SSL verification (use only for development)")
+    parser.set_defaults(verify_ssl=True)
+    parser.add_argument("--dry-run", action="store_true",
+                       help="Render and validate locally; skip all WeChat API calls")
+    parser.add_argument("--validate", action="store_true",
+                       help="Only validate inputs and local images; no rendering output required")
+    parser.add_argument("--out-html", help="Write rendered HTML to a file (dry-run only)")
     parser.add_argument("-v", "--verbose", action="store_true", 
                        help="Enable verbose debug logging")
     
     args = parser.parse_args()
     
-    # Validate credentials (from args or environment variables)
-    app_id = args.id or os.environ.get("WECHAT_APP_ID")
-    app_secret = args.secret or os.environ.get("WECHAT_APP_SECRET")
+    enable_network = not (args.dry_run or args.validate)
+    app_id = (args.id or os.environ.get("WECHAT_APP_ID") or "") if enable_network else (args.id or os.environ.get("WECHAT_APP_ID") or "")
+    app_secret = (args.secret or os.environ.get("WECHAT_APP_SECRET") or "") if enable_network else (args.secret or os.environ.get("WECHAT_APP_SECRET") or "")
     
-    if not app_id or not app_secret:
-        parser.error("Credentials required. Use --id/--secret or set WECHAT_APP_ID/WECHAT_APP_SECRET environment variables.")
+    if enable_network and (not app_id or not app_secret):
+        parser.error("Credentials required for publish mode. Use --id/--secret or set WECHAT_APP_ID/WECHAT_APP_SECRET environment variables.")
     
     # Setup logging
     logger = setup_logging(args.verbose)
     
     logger.info("=" * 50)
-    logger.info("WeChat Markdown Publisher v1.0 (with Error Handling)")
+    logger.info("WeChat Markdown Publisher v1.1 (Hardened for Agent Runs)")
     logger.info("=" * 50)
     
     try:
@@ -728,48 +903,67 @@ def main():
         title = args.title or (title_match.group(1) if title_match else "Untitled Article")
         logger.info(f"Article title: {title}")
         
-        # Handle thumbnail
         thumb_path = args.thumb
-        if not thumb_path:
-            logger.info(f"No thumb provided. Auto-generating cover for style: {args.style}...")
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            gen_script = os.path.join(script_dir, "generate_cover.py")
-            auto_thumb = os.path.join(os.path.dirname(script_dir), "assets", "auto_cover.png")
-            
-            # Clean up old auto_thumb if exists
-            if os.path.exists(auto_thumb):
-                os.remove(auto_thumb)
-                logger.debug(f"Removed old thumbnail: {auto_thumb}")
-            
-            # Generate cover
-            cmd = f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"'
-            logger.debug(f"Running: {cmd}")
-            result = os.system(cmd)
-            
-            if result == 0 and os.path.exists(auto_thumb):
-                thumb_path = auto_thumb
-                logger.info(f"✓ Auto-generated cover: {auto_thumb}")
-            else:
-                # If generation failed, check if we have a default thumb
-                default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
-                if os.path.exists(default_thumb):
-                    thumb_path = default_thumb
-                    logger.warning(f"Generation failed, using default thumbnail")
+        if enable_network:
+            if not thumb_path:
+                logger.info(f"No thumb provided. Auto-generating cover for style: {args.style}...")
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                gen_script = os.path.join(script_dir, "generate_cover.py")
+                auto_thumb = os.path.join(os.path.dirname(script_dir), "assets", "auto_cover.png")
+                
+                if os.path.exists(auto_thumb):
+                    os.remove(auto_thumb)
+                    logger.debug(f"Removed old thumbnail: {auto_thumb}")
+                
+                cmd = f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"'
+                logger.debug(f"Running: {cmd}")
+                result = os.system(cmd)
+                
+                if result == 0 and os.path.exists(auto_thumb):
+                    thumb_path = auto_thumb
+                    logger.info(f"✓ Auto-generated cover: {auto_thumb}")
                 else:
-                    raise ValidationError("No thumbnail provided and auto-generation failed")
+                    default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
+                    if os.path.exists(default_thumb):
+                        thumb_path = default_thumb
+                        logger.warning("Generation failed, using default thumbnail")
+                    else:
+                        raise ValidationError("No thumbnail provided and auto-generation failed")
+        else:
+            if thumb_path:
+                _ensure_supported_image(thumb_path)
         
-        # Initialize publisher
         logger.info("Initializing WeChat publisher...")
-        publisher = WeChatPublisher(app_id, app_secret, args.verify_ssl)
+        publisher = WeChatPublisher(app_id, app_secret, verify_ssl=args.verify_ssl, enable_network=enable_network)
         
-        # Upload thumbnail
-        thumb_id = publisher.upload_thumb(thumb_path)
-        
-        # Convert MD to HTML
-        html = publisher.convert_md_to_html(md_content, args.style)
+        html = publisher.convert_md_to_html(
+            md_content,
+            args.style,
+            md_path=args.md,
+            upload_images=enable_network,
+            validate_images=(args.validate or args.dry_run),
+        )
         logger.info(f"✓ Converted Markdown to HTML ({len(html)} bytes)")
         
-        # Create draft
+        if args.out_html:
+            if not args.dry_run:
+                raise ValidationError("--out-html is only supported with --dry-run")
+            out_dir = os.path.dirname(os.path.abspath(args.out_html))
+            if out_dir and not os.path.exists(out_dir):
+                os.makedirs(out_dir, exist_ok=True)
+            with open(args.out_html, "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info(f"✓ Wrote HTML: {args.out_html}")
+        
+        if args.validate:
+            logger.info("✓ Validation OK")
+            return 0
+        
+        if args.dry_run:
+            logger.info("✓ Dry-run complete (no WeChat API calls made)")
+            return 0
+        
+        thumb_id = publisher.upload_thumb(thumb_path)
         result = publisher.create_draft(title, html, thumb_id)
         
         # Success

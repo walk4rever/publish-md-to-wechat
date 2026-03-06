@@ -68,13 +68,11 @@ def generate_online_png(title: str, style_name: str, output_path: str) -> bool:
     logger.debug(f"Requesting: {url}")
     
     try:
-        # Create unverified context as fallback
-        context = ssl._create_unverified_context()
         req = urllib.request.Request(url, headers={
             'User-Agent': 'WeChatPublisher-CoverGenerator/1.0'
         })
-        
-        with urllib.request.urlopen(req, timeout=15, context=context) as response:
+
+        with urllib.request.urlopen(req, timeout=15) as response:
             if response.status == 200:
                 with open(output_path, "wb") as f:
                     f.write(response.read())
@@ -130,6 +128,7 @@ def main():
     parser.add_argument("--title", required=True, help="Article Title")
     parser.add_argument("--style", default="swiss", help="Style preset")
     parser.add_argument("--output", default="assets/cover.png", help="Output file path")
+    parser.add_argument("--no-verify-ssl", action="store_true", help="Disable SSL verification (use only for development)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()
@@ -159,6 +158,11 @@ def main():
     
     # Try online generation first
     logger.info(f"Generating cover: '{args.title}' (style: {args.style})")
+    if args.no_verify_ssl:
+        logger.warning("SSL verification disabled - use only for development")
+        ssl._create_default_https_context = ssl._create_unverified_context
+    else:
+        ssl._create_default_https_context = ssl.create_default_context
     success = generate_online_png(args.title, args.style, args.output)
     
     if success and os.path.exists(args.output):
