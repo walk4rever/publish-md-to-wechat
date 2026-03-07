@@ -72,28 +72,43 @@ def get_font(size: int):
     Returns an ImageFont instance.
     """
     # Common font paths on macOS/Linux/Windows
+    # Prioritize Chinese-supporting fonts
     font_candidates = [
         # macOS
         "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
-        "/Library/Fonts/Arial.ttf",
-        # Linux
+        
+        # Linux (Common Chinese fonts)
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        
         # Windows
+        "C:\\Windows\\Fonts\\msyh.ttc",    # Microsoft YaHei
+        "C:\\Windows\\Fonts\\simhei.ttf",  # SimHei
+        "C:\\Windows\\Fonts\\simsun.ttc",  # SimSun
         "C:\\Windows\\Fonts\\arial.ttf",
-        "C:\\Windows\\Fonts\\msyh.ttc",
     ]
     
     for path in font_candidates:
         if os.path.exists(path):
             try:
-                return ImageFont.truetype(path, size)
-            except Exception:
+                font = ImageFont.truetype(path, size)
+                logger.debug(f"Loaded font: {path}")
+                return font
+            except Exception as e:
+                logger.debug(f"Failed to load font {path}: {e}")
                 continue
                 
     # Fallback to default
-    logger.warning("No system fonts found, using default bitmap font (ugly).")
+    logger.warning("No system fonts found, using default bitmap font (Chinese will likely be garbled).")
     return ImageFont.load_default()
 
 

@@ -930,22 +930,36 @@ def main():
                 gen_script = os.path.join(script_dir, "generate_cover.py")
                 auto_thumb = os.path.join(os.path.dirname(script_dir), "assets", "auto_cover.png")
                 
+                import subprocess
+                
                 if os.path.exists(auto_thumb):
                     os.remove(auto_thumb)
                     logger.debug(f"Removed old thumbnail: {auto_thumb}")
                 
-                cmd = f'python3 "{gen_script}" --title "{title}" --style "{args.style}" --output "{auto_thumb}"'
-                logger.debug(f"Running: {cmd}")
-                result = os.system(cmd)
+                python_exe = sys.executable
+                cmd_args = [python_exe, gen_script, "--title", title, "--style", args.style, "--output", auto_thumb]
+                if args.verbose:
+                    cmd_args.append("--verbose")
+                logger.debug(f"Running: {' '.join(cmd_args)}")
                 
-                if result == 0 and os.path.exists(auto_thumb):
-                    thumb_path = auto_thumb
-                    logger.info(f"✓ Auto-generated cover: {auto_thumb}")
-                else:
+                try:
+                    result = subprocess.run(cmd_args, capture_output=True, text=True)
+                    if result.returncode == 0 and os.path.exists(auto_thumb):
+                        thumb_path = auto_thumb
+                        logger.info(f"✓ Auto-generated cover: {auto_thumb}")
+                    else:
+                        logger.warning(f"Cover generation failed: {result.stderr}")
+                        default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
+                        if os.path.exists(default_thumb):
+                            thumb_path = default_thumb
+                            logger.warning("Generation failed, using default thumbnail")
+                        else:
+                            raise ValidationError("No thumbnail provided and auto-generation failed")
+                except Exception as e:
+                    logger.warning(f"Failed to run generation script: {e}")
                     default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
                     if os.path.exists(default_thumb):
                         thumb_path = default_thumb
-                        logger.warning("Generation failed, using default thumbnail")
                     else:
                         raise ValidationError("No thumbnail provided and auto-generation failed")
         else:
