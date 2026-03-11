@@ -4,6 +4,8 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
+__version__ = "0.4.0"
+
 import urllib.request
 import urllib.error
 import json
@@ -48,6 +50,57 @@ try:
 except ImportError:
     # We will handle the error if mistune is missing later in the process
     mistune = None
+
+def clean_text_for_title(text: str) -> str:
+    """Clean text for WeChat article title: remove MD, special chars, and limit length."""
+    if not text:
+        return ""
+    
+    # 1. Remove Markdown formatting
+    # Remove bold/italic
+    text = re.sub(r'[*_~`]', '', text)
+    # Remove links but keep text: [text](url) -> text
+    text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # 2. Filter special characters
+    # Keep: Alphanumeric, Chinese, and basic punctuation that is visually clean
+    # Remove: < > [ ] { } / \ | * # @ $ % ^ & + = ~ `
+    # Allowed: ，。！？（）《》【】“”：；, . ! ? ( ) - _
+    allowed_pattern = r'[^\w\s\u4e00-\u9fa5，。！？（）《》【】“”：；, . ! ? ( ) \- _]'
+    text = re.sub(allowed_pattern, '', text)
+    
+    # 3. Collapse multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # 4. Limit length to 50 characters (WeChat limit is actually 64, but user said 50)
+    # Note: User explicitly said "not exceeding 50 characters"
+    if len(text) > 50:
+        text = text[:47] + "..."
+        
+    return text
+
+
+def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
+    """Extract and refine article title from MD content."""
+    title = provided_title
+    
+    if not title:
+        # Try to find first H1
+        h1_match = re.search(r'^#\s+(.*)$', md_content, re.M)
+        if h1_match:
+            title = h1_match.group(1)
+        else:
+            # Fallback to first non-empty line
+            lines = [l.strip() for l in md_content.split('\n') if l.strip()]
+            if lines:
+                title = lines[0]
+            else:
+                title = "Untitled Article"
+    
+    return clean_text_for_title(title)
+
 
 # ============================================================
 # WeChat HTML Renderer (AST-based)
@@ -692,8 +745,15 @@ class WeChatPublisher:
             logger.error("mistune library not found. Please run ./install.sh")
             raise ValidationError("Missing dependency: mistune. Please install it first.")
 
-        # 1. Pre-process: Convert Obsidian WikiLink ![[img.png]] to standard MD ![img](<img.png>)
-        processed_md = re.sub(r'!\[\[(.*?)\]\]', r'![\1](<\1>)', md_content)
+        # 1. Pre-process: Convert Obsidian WikiLink ![[img.png|alias]] to standard MD ![alias](<img.png>)
+        # We need to handle pipes | for aliases and sizes, taking only the first part as path
+        def obsidian_repl(match):
+            path_part = match.group(1).strip()
+            alias_part = match.group(2).strip() if match.group(2) else path_part
+            # Use <> to wrap the URL in MD in case it has spaces
+            return f'![{alias_part}](<{path_part}>)'
+            
+        processed_md = re.sub(r'!\[\[([^|\]]+)(?:\|([^\]]+))?\]\]', obsidian_repl, md_content)
         
         # Validate style
         if style_name not in self.STYLES:
@@ -754,38 +814,49 @@ class WeChatPublisher:
             
             # Decode URL (e.g., %20 -> space) and unescape HTML entities
             local_path_decoded = urllib.parse.unquote(local_path)
-            filename = os.path.basename(local_path_decoded)
-                
+            
             # Recursive search for the file
             found_path = None
             
-            # Search order:
-            # 1. MD directory and its subdirectories
-            # 2. Project root and its subdirectories
-            search_bases = [md_dir, project_root]
+            # 1. Try direct path relative to MD file
+            direct_rel_path = os.path.join(md_dir, local_path_decoded)
+            if os.path.exists(direct_rel_path):
+                found_path = direct_rel_path
             
-            logger.info(f"Searching for image '{filename}'...")
+            # 2. Try direct path relative to project root
+            if not found_path:
+                direct_root_path = os.path.join(project_root, local_path_decoded)
+                if os.path.exists(direct_root_path):
+                    found_path = direct_root_path
             
-            for base in search_bases:
-                if found_path: break
-                logger.debug(f"  Searching in: {base}")
-                for root, dirs, files in os.walk(base):
-                    if filename in files:
-                        found_path = os.path.join(root, filename)
-                        break
+            # 3. Recursive search by filename (fallback)
+            if not found_path:
+                filename = os.path.basename(local_path_decoded)
+                logger.info(f"Searching for image '{filename}' recursively...")
+                
+                # Search order: MD dir then Project root
+                search_bases = [md_dir, project_root]
+                for base in search_bases:
+                    if found_path: break
+                    for root, dirs, files in os.walk(base):
+                        if filename in files:
+                            found_path = os.path.join(root, filename)
+                            break
             
             if found_path:
+                found_path = os.path.abspath(found_path)
                 try:
                     if validate_images:
                         _ensure_supported_image(found_path)
                         logger.info(f"✓ Image OK: {found_path}")
                     if upload_images:
                         wechat_url = self.upload_image(found_path)
+                        # Use replace with care, but since it's the exact src attribute value it's safe
                         main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
                 except Exception as e:
                     logger.warning(f"Failed to upload image {found_path}: {e}")
             else:
-                logger.warning(f"Image '{filename}' not found in any search path.")
+                logger.warning(f"Image '{local_path_decoded}' not found in any search path.")
         
         # Wrap with global container
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
@@ -917,10 +988,9 @@ def main():
         if not md_content.strip():
             raise ValidationError("Markdown file is empty")
         
-        # Extract title from MD or use provided
-        title_match = re.search(r'^# (.*)$', md_content, re.M)
-        title = args.title or (title_match.group(1) if title_match else "Untitled Article")
-        logger.info(f"Article title: {title}")
+        # Refine and clean title from MD or use provided
+        title = refine_title(md_content, args.title)
+        logger.info(f"Final article title: {title}")
         
         thumb_path = args.thumb
         if enable_network:
@@ -940,6 +1010,9 @@ def main():
                 cmd_args = [python_exe, gen_script, "--title", title, "--style", args.style, "--output", auto_thumb]
                 if args.verbose:
                     cmd_args.append("--verbose")
+                if not args.verify_ssl:
+                    cmd_args.append("--no-verify-ssl")
+                
                 logger.debug(f"Running: {' '.join(cmd_args)}")
                 
                 try:
@@ -948,7 +1021,8 @@ def main():
                         thumb_path = auto_thumb
                         logger.info(f"✓ Auto-generated cover: {auto_thumb}")
                     else:
-                        logger.warning(f"Cover generation failed: {result.stderr}")
+                        error_msg = result.stderr or result.stdout or "Unknown error"
+                        logger.warning(f"Cover generation failed: {error_msg.strip()}")
                         default_thumb = os.path.join(os.path.dirname(script_dir), "assets", "default_thumb.png")
                         if os.path.exists(default_thumb):
                             thumb_path = default_thumb
