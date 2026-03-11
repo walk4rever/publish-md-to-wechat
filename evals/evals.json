@@ -1,0 +1,26 @@
+{
+  "skill_name": "publish-md-to-wechat",
+  "evals": [
+    {
+      "id": 1,
+      "name": "basic-publish",
+      "prompt": "Publish the file test_articles/test.md to my WeChat Official Account as a draft.",
+      "expected_output": "The Agent should detect credentials, select a style (or ask), and execute the publisher script to create a draft, providing the media_id in the response.",
+      "files": ["test_articles/test.md"]
+    },
+    {
+      "id": 2,
+      "name": "style-selection-publish",
+      "prompt": "I have a technical tutorial in test_articles/test_features.md. I want to publish it to WeChat with a 'Terminal' hacker style.",
+      "expected_output": "The Agent should correctly map 'Terminal' to the --style terminal parameter and execute the publisher.",
+      "files": ["test_articles/test_features.md"]
+    },
+    {
+      "id": 3,
+      "name": "auto-cover-publish",
+      "prompt": "Publish test_articles/test.md to WeChat. I don't have a cover image, please handle it for me.",
+      "expected_output": "The Agent should use generate_cover.py to create a cover before calling the publisher.",
+      "files": ["test_articles/test.md"]
+    }
+  ]
+}

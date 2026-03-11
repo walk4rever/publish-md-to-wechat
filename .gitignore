@@ -1,8 +1,64 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environment
 .env
+.env.local
 .env.*
 .venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Editor/OS
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+tmp/
+.socket
 *.log
+.ruff_cache/
+
+# Generated Assets (Keep templates/defaults, ignore dynamic results)
+# We now use tmp/ for auto-generated covers by default in Skill instructions
+assets/auto_cover.png
+assets/auto_cover.svg
+assets/test_cover.png
+assets/Pasted image*.png
+
+# Skill specific (if any test results or workspace folders are created)
+*-workspace/
+iteration-*/
+eval_review_*.html
+feedback.json
+benchmark.json
+benchmark.md
+grading.json
+timing.json
+eval_metadata.json
