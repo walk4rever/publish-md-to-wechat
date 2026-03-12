@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 import urllib.request
 import urllib.error
@@ -18,6 +18,7 @@ import logging
 import urllib.parse
 import hashlib
 import time
+import yaml
 from datetime import datetime
 from typing import Optional, Any, Dict
 
@@ -242,8 +243,12 @@ class WeChatRenderer(mistune.HTMLRenderer):
         # mistune 3.x uses 'url' as the keyword for the image source
         caption = alt or text
         
-        # Suppress technical filenames or Obsidian placeholders from being displayed as captions
-        if caption and (caption.startswith('Pasted image') or re.search(r'\.(png|jpg|jpeg|gif|webp)$', caption, re.I)):
+        # Suppress technical filenames, Obsidian placeholders, or generic words from being displayed as captions
+        generic_placeholders = ['image', 'img', '图片', 'pasted image', 'screenshot']
+        is_generic = caption.lower().strip() in generic_placeholders
+        is_filename = re.search(r'\.(png|jpg|jpeg|gif|webp)$', caption, re.I)
+        
+        if caption and (is_generic or is_filename or caption.startswith('Pasted image')):
             caption = ""
             
         return (f'<section style="margin: 25px 0; text-align: center;">'
@@ -745,15 +750,30 @@ class WeChatPublisher:
             logger.error("mistune library not found. Please run ./install.sh")
             raise ValidationError("Missing dependency: mistune. Please install it first.")
 
-        # 1. Pre-process: Convert Obsidian WikiLink ![[img.png|alias]] to standard MD ![alias](<img.png>)
-        # We need to handle pipes | for aliases and sizes, taking only the first part as path
+        # 1. Parse and Extract YAML Frontmatter
+        frontmatter = {}
+        content_body = md_content
+        fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_content, re.DOTALL)
+        if fm_match:
+            fm_text = fm_match.group(1)
+            content_body = md_content[fm_match.end():]
+            try:
+                frontmatter = yaml.safe_load(fm_text) or {}
+            except Exception as e:
+                logger.warning(f"Failed to parse frontmatter as YAML: {e}")
+                # Fallback to simple parser if YAML fails
+                for line in fm_text.split('\n'):
+                    if ':' in line:
+                        k, v = line.split(':', 1)
+                        frontmatter[k.strip()] = v.strip()
+
+        # 2. Pre-process: Convert Obsidian WikiLink ![[img.png|alias]] to standard MD ![alias](<img.png>)
         def obsidian_repl(match):
             path_part = match.group(1).strip()
             alias_part = match.group(2).strip() if match.group(2) else path_part
-            # Use <> to wrap the URL in MD in case it has spaces
             return f'![{alias_part}](<{path_part}>)'
             
-        processed_md = re.sub(r'!\[\[([^|\]]+)(?:\|([^\]]+))?\]\]', obsidian_repl, md_content)
+        processed_md = re.sub(r'!\[\[([^|\]]+)(?:\|([^\]]+))?\]\]', obsidian_repl, content_body)
         
         # Validate style
         if style_name not in self.STYLES:
@@ -761,6 +781,25 @@ class WeChatPublisher:
             style_name = "swiss"
         
         style = self.STYLES[style_name]
+
+        # Generate Frontmatter HTML
+        fm_html = ""
+        if frontmatter:
+            fm_items = []
+            # We filter some internal or huge fields, only show relevant ones
+            display_keys = ['source', 'author', 'published', 'tags', 'description']
+            for k in display_keys:
+                if k in frontmatter:
+                    v = frontmatter[k]
+                    # Handle lists (like tags or authors)
+                    if isinstance(v, list):
+                        v = ", ".join(map(str, v))
+                    fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]}; text-transform: uppercase;">{k}:</strong> {v}</div>')
+            
+            if fm_items:
+                fm_html = (f'<section style="margin: 0 0 30px; padding: 20px; border: 1px solid #eeeeee; '
+                           f'background-color: #fafafa; border-radius: 4px;">'
+                           f'{" ".join(fm_items)}</section>')
 
         # ULTIMATE PROTECTION v2: Use Placeholders to bypass Markdown parser
         table_cache = {}
@@ -809,39 +848,66 @@ class WeChatPublisher:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         for local_path in img_tags:
-            if local_path.startswith(('http://', 'https://')):
-                continue
-            
             # Decode URL (e.g., %20 -> space) and unescape HTML entities
             local_path_decoded = urllib.parse.unquote(local_path)
-            
-            # Recursive search for the file
             found_path = None
+            is_external = local_path.startswith(('http://', 'https://'))
             
-            # 1. Try direct path relative to MD file
-            direct_rel_path = os.path.join(md_dir, local_path_decoded)
-            if os.path.exists(direct_rel_path):
-                found_path = direct_rel_path
-            
-            # 2. Try direct path relative to project root
-            if not found_path:
-                direct_root_path = os.path.join(project_root, local_path_decoded)
-                if os.path.exists(direct_root_path):
-                    found_path = direct_root_path
-            
-            # 3. Recursive search by filename (fallback)
-            if not found_path:
-                filename = os.path.basename(local_path_decoded)
-                logger.info(f"Searching for image '{filename}' recursively...")
+            if is_external:
+                if not upload_images:
+                    continue
+                logger.info(f"Downloading external image: {local_path}")
+                try:
+                    tmp_dir = os.path.join(project_root, "tmp", "assets")
+                    os.makedirs(tmp_dir, exist_ok=True)
+                    ext = ".jpg" # Default
+                    if ".png" in local_path.lower(): ext = ".png"
+                    elif ".gif" in local_path.lower(): ext = ".gif"
+                    
+                    # Create a hash of the URL to avoid re-downloading/collisions
+                    url_hash = hashlib.md5(local_path.encode()).hexdigest()
+                    found_path = os.path.join(tmp_dir, f"ext_{url_hash}{ext}")
+                    
+                    if not os.path.exists(found_path):
+                        req = urllib.request.Request(local_path, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=20, context=self.ssl_context) as response:
+                            with open(found_path, "wb") as f:
+                                f.write(response.read())
+                    logger.info(f"✓ Downloaded to: {found_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to download external image {local_path}: {e}")
+                    continue
+            else:
+                # Local image logic
+                md_abs = md_path or ""
+                if md_abs and not os.path.isabs(md_abs):
+                    md_abs = os.path.join(os.getcwd(), md_abs)
+                md_dir = os.path.dirname(os.path.abspath(md_abs)) if md_abs else os.getcwd()
                 
-                # Search order: MD dir then Project root
-                search_bases = [md_dir, project_root]
-                for base in search_bases:
-                    if found_path: break
-                    for root, dirs, files in os.walk(base):
-                        if filename in files:
-                            found_path = os.path.join(root, filename)
-                            break
+                # 1. Try direct path relative to MD file
+                direct_rel_path = os.path.join(md_dir, local_path_decoded)
+                if os.path.exists(direct_rel_path):
+                    found_path = direct_rel_path
+                
+                # 2. Try direct path relative to project root
+                if not found_path:
+                    direct_root_path = os.path.join(project_root, local_path_decoded)
+                    if os.path.exists(direct_root_path):
+                        found_path = direct_root_path
+                
+                # 3. Recursive search by filename (fallback)
+                if not found_path:
+                    filename = os.path.basename(local_path_decoded)
+                    logger.info(f"Searching for image '{filename}' recursively...")
+                    
+                    # Search order: MD dir then Project root
+                    search_bases = [md_dir, project_root]
+                    for base in search_bases:
+                        if found_path: break
+                        for root, dirs, files in os.walk(base):
+                            if filename in files:
+                                found_path = os.path.join(root, filename)
+                                break
             
             if found_path:
                 found_path = os.path.abspath(found_path)
@@ -856,7 +922,8 @@ class WeChatPublisher:
                 except Exception as e:
                     logger.warning(f"Failed to upload image {found_path}: {e}")
             else:
-                logger.warning(f"Image '{local_path_decoded}' not found in any search path.")
+                if not is_external:
+                    logger.warning(f"Image '{local_path_decoded}' not found in any search path.")
         
         # Wrap with global container
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
@@ -864,7 +931,7 @@ class WeChatPublisher:
                  f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
                  f'text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
         
-        return header + main_html + footer
+        return header + fm_html + main_html + footer
 
     def create_draft(self, title: str, html_content: str, thumb_id: str) -> dict:
         """Create a draft in WeChat Official Account."""
