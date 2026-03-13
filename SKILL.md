@@ -12,7 +12,9 @@ Professional Markdown to WeChat Official Account Draft publisher with style-driv
 ### 1. Prerequisite Check (Silent)
 Before any action, ensure the environment is ready:
 - **Dependencies**: Check if `.venv/bin/activate` or `mistune` is available. If missing, tell the user: "I need to set up the environment first. Running `./install.sh`..." and execute it.
-- **Credentials**: Look for `WECHAT_APP_ID` and `WECHAT_APP_SECRET` in `.env`. If missing, ask the user to provide them.
+- **Credentials**: The script automatically loads `WECHAT_APP_ID` and `WECHAT_APP_SECRET` from the `.env` file. 
+  - If `.env` exists, **do NOT** read its content or ask the user for credentials. Just proceed with the following steps.
+  - If the script fails with an "Authentication Error" or if `.env` is missing, then ask the user for credentials and save them to `.env`.
 
 ### 2. Content Preparation & Style Selection
 - **Analyze Content**: Read the input Markdown file.
@@ -30,11 +32,9 @@ Before any action, ensure the environment is ready:
 - **AI Creative**: If requested, generate a high-quality prompt for an image generator (DALL-E) based on the article theme.
 
 ### 4. Execution (The Publisher)
-Run the publisher script using the virtual environment:
+Run the publisher script using the virtual environment (it will load credentials from `.env` automatically):
 ```bash
 source .venv/bin/activate && python3 scripts/wechat_publisher.py \
-  --id "$WECHAT_APP_ID" \
-  --secret "$WECHAT_APP_SECRET" \
   --md [PATH_TO_MD] \
   --style [STYLE] \
   --thumb [THUMB_PATH_OR_TMP_PATH]
