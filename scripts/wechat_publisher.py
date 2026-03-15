@@ -111,7 +111,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
     """Custom renderer for WeChat compatible HTML with inline styles."""
     
     def __init__(self, style, style_name):
-        super().__init__()
+        super().__init__(escape=False)
         self.style = style
         self.style_name = style_name
 
@@ -166,21 +166,24 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def block_code(self, code, info=None):
         s = self.style
+        # Escape HTML then replace newlines with <br> for reliable WeChat mobile rendering
+        def _escape(c):
+            return c.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
         # Simplified code block for swiss
         if self.style_name == "swiss":
-            escaped_code = code.replace('<', '&lt;').replace('>', '&gt;')
+            escaped_code = _escape(code)
             return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f6f6f6; '
                     f'border-radius: 4px; overflow-x: auto; border: 1px solid #eeeeee;">'
                     f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 13px; line-height: 1.5; '
-                    f'color: #333333; white-space: pre;">{escaped_code}</pre></section>\n')
-        
+                    f'color: #333333; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
+
         bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
         border_color = s["accent"] if self.style_name in ["terminal", "cyber"] else s["secondary"]
-        escaped_code = code.replace('<', '&lt;').replace('>', '&gt;')
+        escaped_code = _escape(code)
         return (f'<section style="margin: 20px 0; padding: 15px; background-color: {bg}; '
                 f'border: 1px solid {border_color}; border-radius: 4px; overflow-x: auto;">'
                 f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 14px; line-height: 1.5; '
-                f'color: {s["text"]}; white-space: pre;">{escaped_code}</pre></section>\n')
+                f'color: {s["text"]}; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
     def list(self, text, ordered, **kwargs):
         margin = "16px 0" if self.style_name == "swiss" else "15px 0"
