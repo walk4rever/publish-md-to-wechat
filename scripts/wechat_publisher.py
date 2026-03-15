@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 import urllib.request
 import urllib.error
@@ -381,6 +381,28 @@ def _raise_if_wechat_error(data: dict, exc_cls: type[WeChatPublisherError], cont
         raise exc_cls(f"{context}: Invalid response from WeChat API")
     if "errcode" in data and data.get("errcode") not in [0, None]:
         raise exc_cls(f"{context}: {_format_wechat_error(data.get('errcode'), data.get('errmsg'))}")
+
+
+def _with_retry(fn, max_attempts: int = 3, context: str = "") -> Any:
+    """Call fn() with exponential backoff retry on rate limit or transient network errors."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except AuthError:
+            raise  # Never retry auth errors
+        except WeChatPublisherError as e:
+            is_rate_limit = "45009" in str(e)
+            if not is_rate_limit or attempt >= max_attempts:
+                raise
+            wait = 2 ** attempt
+            logger.warning(f"{context}: rate limit hit (attempt {attempt}/{max_attempts}). Retrying in {wait}s...")
+            time.sleep(wait)
+        except urllib.error.URLError as e:
+            if attempt >= max_attempts:
+                raise
+            wait = 2 ** attempt
+            logger.warning(f"{context}: network error (attempt {attempt}/{max_attempts}): {e}. Retrying in {wait}s...")
+            time.sleep(wait)
 
 
 # ============================================================
@@ -916,7 +938,7 @@ class WeChatPublisher:
                         _ensure_supported_image(found_path)
                         logger.info(f"✓ Image OK: {found_path}")
                     if upload_images:
-                        wechat_url = self.upload_image(found_path)
+                        wechat_url = _with_retry(lambda p=found_path: self.upload_image(p), context=f"upload_image:{os.path.basename(found_path)}")
                         # Use replace with care, but since it's the exact src attribute value it's safe
                         main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
                 except Exception as e:
@@ -933,30 +955,30 @@ class WeChatPublisher:
         
         return header + fm_html + main_html + footer
 
-    def create_draft(self, title: str, html_content: str, thumb_id: str) -> dict:
+    def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "") -> dict:
         """Create a draft in WeChat Official Account."""
         logger.info(f"Creating draft: {title}")
-        
+
         if not self.enable_network or not self.access_token:
             raise DraftError("Network disabled; cannot create draft in dry-run/validate mode")
-        
+
         # Validate inputs
         if not title or not title.strip():
             raise DraftError("Title cannot be empty")
-        
+
         if not html_content:
             raise DraftError("HTML content cannot be empty")
-        
+
         if not thumb_id:
             raise DraftError("Thumbnail media_id is required")
-        
+
         url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={self.access_token}"
-        
+
         data = {
             "articles": [{
                 "title": title,
-                "author": "Agent",
-                "digest": "Automatically published from Markdown via Agent Skill.",
+                "author": author or "Agent",
+                "digest": digest or "Automatically published from Markdown via Agent Skill.",
                 "content": html_content,
                 "thumb_media_id": thumb_id,
                 "need_open_comment": 1
@@ -1054,7 +1076,22 @@ def main():
         
         if not md_content.strip():
             raise ValidationError("Markdown file is empty")
-        
+
+        # Parse YAML frontmatter for metadata (author, digest)
+        frontmatter = {}
+        fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_content, re.DOTALL)
+        if fm_match:
+            try:
+                frontmatter = yaml.safe_load(fm_match.group(1)) or {}
+            except Exception:
+                pass
+        fm_author = str(frontmatter.get("author", "")).strip()
+        fm_digest = str(frontmatter.get("description", "") or frontmatter.get("digest", "") or frontmatter.get("summary", "")).strip()
+        if fm_author:
+            logger.info(f"Frontmatter author: {fm_author}")
+        if fm_digest:
+            logger.info(f"Frontmatter digest: {fm_digest[:60]}{'...' if len(fm_digest) > 60 else ''}")
+
         # Refine and clean title from MD or use provided
         title = refine_title(md_content, args.title)
         logger.info(f"Final article title: {title}")
@@ -1137,8 +1174,8 @@ def main():
             logger.info("✓ Dry-run complete (no WeChat API calls made)")
             return 0
         
-        thumb_id = publisher.upload_thumb(thumb_path)
-        result = publisher.create_draft(title, html, thumb_id)
+        thumb_id = _with_retry(lambda: publisher.upload_thumb(thumb_path), context="upload_thumb")
+        result = _with_retry(lambda: publisher.create_draft(title, html, thumb_id, author=fm_author, digest=fm_digest), context="create_draft")
         
         # Success
         logger.info("=" * 50)

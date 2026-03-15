@@ -253,8 +253,6 @@ python3 scripts/wechat_publisher.py \
   --secret 你的APPSECRET \
   --md 文章.md \
   --thumb 封面.png \
-  --no-verify-ssl \
-  --verify-ssl \
   -v  # 启用详细日志
 ```
 
@@ -270,7 +268,6 @@ python3 scripts/wechat_publisher.py \
 | `--dry-run` | 渲染 + 校验本地内容，不调用微信 API |
 | `--validate` | 仅校验输入与本地图片，不调用微信 API |
 | `--out-html` | 将渲染后的 HTML 写入文件（仅 dry-run 支持） |
-| `--verify-ssl` | 启用 SSL 验证（默认开启） |
 
 ### 环境变量 | Environment Variables
 

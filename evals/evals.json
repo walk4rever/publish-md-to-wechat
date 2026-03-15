@@ -3,24 +3,53 @@
   "evals": [
     {
       "id": 1,
-      "name": "basic-publish",
       "prompt": "Publish the file test_articles/test.md to my WeChat Official Account as a draft.",
-      "expected_output": "The Agent should detect credentials, select a style (or ask), and execute the publisher script to create a draft, providing the media_id in the response.",
-      "files": ["test_articles/test.md"]
+      "expected_output": "The agent reads the Markdown, selects a style (or proposes one), runs the publisher script, and returns a success message with the media_id.",
+      "files": ["evals/files/test.md"],
+      "expectations": [
+        "The agent proposes or confirms a visual style before publishing",
+        "The agent runs the publish.sh or wechat_publisher.py script",
+        "The final response includes a media_id from the WeChat API",
+        "The final response includes the article title",
+        "The agent does not ask for credentials if .env already exists"
+      ]
     },
     {
       "id": 2,
-      "name": "style-selection-publish",
-      "prompt": "I have a technical tutorial in test_articles/test_features.md. I want to publish it to WeChat with a 'Terminal' hacker style.",
-      "expected_output": "The Agent should correctly map 'Terminal' to the --style terminal parameter and execute the publisher.",
-      "files": ["test_articles/test_features.md"]
+      "prompt": "I have a technical tutorial in evals/files/test_features.md. I want to publish it to WeChat with a 'Terminal' hacker style.",
+      "expected_output": "The agent uses --style terminal and publishes the article, returning a success response with media_id.",
+      "files": ["evals/files/test_features.md"],
+      "expectations": [
+        "The agent uses --style terminal (not another style) in the command",
+        "The agent does not ask the user to confirm the style since it was already specified",
+        "The final response includes a media_id",
+        "The publisher script runs successfully without validation errors"
+      ]
     },
     {
       "id": 3,
-      "name": "auto-cover-publish",
-      "prompt": "Publish test_articles/test.md to WeChat. I don't have a cover image, please handle it for me.",
-      "expected_output": "The Agent should use generate_cover.py to create a cover before calling the publisher.",
-      "files": ["test_articles/test.md"]
+      "prompt": "Publish evals/files/test.md to WeChat. I don't have a cover image, please handle it for me.",
+      "expected_output": "The agent publishes without a --thumb argument, allowing the script to auto-generate a cover from the title. The response confirms cover was auto-generated.",
+      "files": ["evals/files/test.md"],
+      "expectations": [
+        "The agent does NOT prompt the user to provide a cover image",
+        "The agent runs the publisher without --thumb, relying on auto-generation",
+        "The response mentions that a cover was auto-generated",
+        "The final response includes a media_id"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "我想把 evals/files/test_features.md 这篇技术文章发布到微信公众号，帮我选一个合适的风格。",
+      "expected_output": "The agent recognizes the Chinese publish-to-WeChat intent, reads the article to assess its tone, proposes an appropriate style with a brief reason, and publishes after confirmation.",
+      "files": ["evals/files/test_features.md"],
+      "expectations": [
+        "The agent correctly handles the Chinese-language request",
+        "The agent reads the article content before proposing a style",
+        "The agent proposes a specific style with a brief justification",
+        "The agent publishes after receiving (or implying) confirmation",
+        "The final response includes a media_id"
+      ]
     }
   ]
 }
