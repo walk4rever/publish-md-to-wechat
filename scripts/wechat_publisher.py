@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 import urllib.request
 import urllib.error
@@ -335,6 +335,42 @@ def _sha256_file(path: str) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _convert_to_wechat_format(path: str) -> str:
+    """Ensure image is in a WeChat-compatible format (PNG/JPG/GIF).
+
+    Detects the actual image format using Pillow regardless of file extension.
+    Converts WebP and other unsupported formats to PNG in-place (new file).
+    Returns the path to use for upload (may differ from input if converted).
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return path  # Can't check without Pillow; let upload fail naturally
+
+    try:
+        with Image.open(path) as img:
+            fmt = (img.format or "").upper()
+    except Exception:
+        return path  # Can't open; let upload attempt proceed
+
+    supported = {"PNG", "JPEG", "GIF"}
+    if fmt in supported:
+        return path
+
+    # Convert to PNG
+    base = os.path.splitext(path)[0]
+    out_path = base + "_converted.png"
+    try:
+        with Image.open(path) as img:
+            rgb = img.convert("RGBA") if img.mode in ("RGBA", "LA", "P") else img.convert("RGB")
+            rgb.save(out_path, "PNG")
+        logger.info(f"✓ Converted {fmt} → PNG: {out_path}")
+        return out_path
+    except Exception as e:
+        logger.warning(f"Failed to convert {fmt} image at {path}: {e}")
+        return path
 
 
 def _ensure_supported_image(path: str) -> None:
@@ -896,6 +932,8 @@ class WeChatPublisher:
                             with open(found_path, "wb") as f:
                                 f.write(response.read())
                     logger.info(f"✓ Downloaded to: {found_path}")
+                    # Convert unsupported formats (e.g. WebP) to PNG before upload
+                    found_path = _convert_to_wechat_format(found_path)
                 except Exception as e:
                     logger.warning(f"Failed to download external image {local_path}: {e}")
                     continue
