@@ -123,7 +123,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 return (f'<section style="margin: 30px 0 20px; text-align: left; border-bottom: {s["border_width"]} solid {s["accent"]}; padding-bottom: 10px;">'
                         f'<h1 style="font-size: 28px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h1></section>\n')
             elif level == 2:
-                return (f'<section style="margin: 35px 0 15px; border-top: 2px solid {s["text"]}; padding-top: 10px;">'
+                return (f'<section style="margin: 32px 0 12px;">'
                         f'<h2 style="font-size: 22px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h2></section>\n')
             elif level == 3:
                 return (f'<section style="margin: 25px 0 10px; border-left: 4px solid {s["accent"]}; padding-left: 12px;">'
@@ -990,9 +990,14 @@ class WeChatPublisher:
         
         # Wrap with global container
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
-        footer = (f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; '
-                 f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
-                 f'text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
+        if style_name == "swiss":
+            footer = (f'<section style="margin-top: 50px; text-align: center; border-top: 1px solid #eeeeee; '
+                     f'padding-top: 20px; font-size: 12px; font-weight: 600; letter-spacing: 1px; '
+                     f'color: {style["secondary"]}; text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
+        else:
+            footer = (f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; '
+                     f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
+                     f'text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
         
         return header + fm_html + main_html + footer
 
@@ -1094,7 +1099,7 @@ def main():
     # Setup logging early
     logger = setup_logging(args.verbose)
     logger.info("=" * 50)
-    logger.info("WeChat Markdown Publisher v1.2 (Hardened for Agent Runs)")
+    logger.info("WeChat Markdown Publisher v1.3 (Hardened for Agent Runs)")
     logger.info("=" * 50)
     
     enable_network = not (args.dry_run or args.validate)
