@@ -787,19 +787,19 @@ BUILTIN_STYLES = {
         "category": "core",
         "desc": "瑞士国际主义风格。白底红色，网格感强，专业克制。适合技术文章、产品更新、官方通知。",
         "bg": "#ffffff", "accent": "#e62e2e", "text": "#000000", "secondary": "#666666",
-        "font": "Helvetica, Arial, sans-serif", "border_width": "3px",
+        "font": "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif", "border_width": "3px",
     },
     "editorial": {
         "category": "core",
         "desc": "杂志编辑风格。暖米色背景，衬线字体，大行距。适合观点文章、深度分析、专栏内容。",
         "bg": "#f5f3ee", "accent": "#1a1a1a", "text": "#1a1a1a", "secondary": "#555555",
-        "font": "Fraunces, serif", "border_width": "2px",
+        "font": "Fraunces, Georgia, 'Times New Roman', 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif", "border_width": "2px",
     },
     "ink": {
         "category": "core",
         "desc": "东方水墨风格。暖白底色，深红强调，超大行距。适合人文历史、文化评论、深度长文。",
         "bg": "#faf9f7", "accent": "#c41e3a", "text": "#1a1a1a", "secondary": "#444444",
-        "font": "Cormorant Garamond, serif", "border_width": "1px",
+        "font": "Cormorant Garamond, 'Palatino Linotype', 'Kaiti SC', 'STKaiti', 'Kaiti', serif", "border_width": "1px",
     },
 
     # ── Extend ────────────────────────────────────────────────────────────────
@@ -808,43 +808,43 @@ BUILTIN_STYLES = {
         "category": "extend",
         "desc": "笔记本风格。米白底色，绿色强调，亲切随意。适合个人日记、读书笔记、生活记录。",
         "bg": "#f8f6f1", "accent": "#98d4bb", "text": "#1a1a1a", "secondary": "#555555",
-        "font": "Bodoni Moda, serif", "border_width": "4px",
+        "font": "'Bodoni Moda', Georgia, 'Kaiti SC', 'STKaiti', 'Kaiti', serif", "border_width": "4px",
     },
     "geometry": {
         "category": "extend",
         "desc": "几何柔和风格。浅白底色，粉色强调，圆润友好。适合生活方式、教程科普、女性向内容。",
         "bg": "#faf9f7", "accent": "#f0b4d4", "text": "#1a1a1a", "secondary": "#5a7c6a",
-        "font": "Plus Jakarta Sans, sans-serif", "border_width": "4px",
+        "font": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif", "border_width": "4px",
     },
     "botanical": {
         "category": "extend",
         "desc": "植物暗色风格。深黑背景，金色强调，高端典雅。适合品牌故事、艺术评论、高奢内容。",
         "bg": "#0f0f0f", "accent": "#d4a574", "text": "#e8e4df", "secondary": "#9a9590",
-        "font": "Cormorant, Georgia, serif", "border_width": "2px",
+        "font": "Cormorant, Georgia, 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif", "border_width": "2px",
     },
     "terminal": {
         "category": "extend",
         "desc": "终端代码风格。GitHub 深色背景，绿色高亮，等宽字体。适合极客内容、开源项目介绍、技术教程。",
         "bg": "#0d1117", "accent": "#39d353", "text": "#e6edf3", "secondary": "#8b949e",
-        "font": "JetBrains Mono, Menlo, Monaco, Courier New, monospace", "border_width": "4px",
+        "font": "'JetBrains Mono', Menlo, Monaco, Consolas, 'Courier New', 'PingFang SC', 'Microsoft YaHei', monospace", "border_width": "4px",
     },
     "bold": {
         "category": "extend",
         "desc": "大胆黑色风格。深黑背景，橙色强调，视觉冲击强。适合活动预告、产品发布、重要公告。",
         "bg": "#1a1a1a", "accent": "#FF5722", "text": "#ffffff", "secondary": "#999999",
-        "font": "Archivo Black, Impact, sans-serif", "border_width": "10px",
+        "font": "'Archivo Black', Impact, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif", "border_width": "10px",
     },
     "cyber": {
         "category": "extend",
         "desc": "赛博朋克风格。深蓝背景，青绿强调，科技感强。适合 AI/科技话题、未来感内容。",
         "bg": "#0a0f1c", "accent": "#00ffcc", "text": "#ffffff", "secondary": "#9ca3af",
-        "font": "Clash Display, sans-serif", "border_width": "4px",
+        "font": "'Clash Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif", "border_width": "4px",
     },
     "voltage": {
         "category": "extend",
         "desc": "高压蓝黄风格。亮蓝背景，荧光黄强调，能量感十足。适合活动运营、促销推广。",
         "bg": "#0066ff", "accent": "#d4ff00", "text": "#ffffff", "secondary": "#e0e0e0",
-        "font": "Syne, sans-serif", "border_width": "6px",
+        "font": "Syne, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif", "border_width": "6px",
     },
 }
 
