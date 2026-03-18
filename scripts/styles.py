@@ -575,7 +575,7 @@ def extract_style_from_content(content: Any,
         raw_text = DEFAULT_TEXT
 
     # Font priority: paragraph inline > stylesheet > all-element scan > default
-    DEFAULT_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif"
+    DEFAULT_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
     resolved_font = most_common_value(
         paragraph_fonts if paragraph_fonts else fonts,
         stylesheet_font or DEFAULT_FONT
