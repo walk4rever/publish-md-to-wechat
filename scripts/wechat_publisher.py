@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.4.3"
+__version__ = "0.6.0"
 
 import urllib.request
 import urllib.error
@@ -21,6 +21,13 @@ import time
 import yaml
 from datetime import datetime
 from typing import Optional, Any, Dict
+
+# Ensure scripts/ directory is on sys.path so `from styles import ...` works
+# regardless of which directory the user invokes the script from.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+from styles import BUILTIN_STYLES
 
 try:
     from dotenv import load_dotenv
@@ -84,22 +91,36 @@ def clean_text_for_title(text: str) -> str:
 
 
 def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
-    """Extract and refine article title from MD content."""
+    """Extract and refine article title from MD content.
+
+    Priority: provided_title > frontmatter title > first H1 > first non-empty line
+    """
     title = provided_title
-    
+
     if not title:
-        # Try to find first H1
-        h1_match = re.search(r'^#\s+(.*)$', md_content, re.M)
+        # 1. Try frontmatter title field
+        fm_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', md_content, re.DOTALL)
+        if fm_match:
+            try:
+                import yaml as _yaml
+                fm = _yaml.safe_load(fm_match.group(1)) or {}
+                title = str(fm.get("title", "")).strip() or None
+            except Exception:
+                pass
+
+    if not title:
+        # 2. First H1 (skip frontmatter block)
+        body = re.sub(r'^---\s*\n.*?\n---\s*\n', '', md_content, count=1, flags=re.DOTALL)
+        h1_match = re.search(r'^#\s+(.+)$', body, re.M)
         if h1_match:
             title = h1_match.group(1)
-        else:
-            # Fallback to first non-empty line
-            lines = [l.strip() for l in md_content.split('\n') if l.strip()]
-            if lines:
-                title = lines[0]
-            else:
-                title = "Untitled Article"
-    
+
+    if not title:
+        # 3. First non-empty line of body
+        body = re.sub(r'^---\s*\n.*?\n---\s*\n', '', md_content, count=1, flags=re.DOTALL)
+        lines = [l.strip() for l in body.split('\n') if l.strip()]
+        title = lines[0] if lines else "Untitled Article"
+
     return clean_text_for_title(title)
 
 
@@ -130,14 +151,15 @@ class WeChatRenderer(mistune.HTMLRenderer):
                         f'<h3 style="font-size: 19px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h3></section>\n')
         
         # Original slide-like styles for other presets
+        # Added max-width to make horizontal lines shorter and more elegant
         if level == 1:
             return (f'<section style="margin-bottom: 40px; border-bottom: {s["border_width"]} '
-                    f'solid {s["text"] if self.style_name != "voltage" else "#fff"}; padding-bottom: 15px;">'
+                    f'solid {s["text"] if self.style_name != "voltage" else "#fff"}; padding-bottom: 15px; max-width: 180px;">'
                     f'<h1 style="font-size: 32px; font-weight: 900; line-height: 1.1; margin: 0; '
                     f'text-transform: uppercase;">{text}</h1></section>\n')
         elif level == 2:
             return (f'<section style="margin-top: 50px; margin-bottom: 20px; border-top: 2px solid {s["text"]}; '
-                    f'padding-top: 15px;"><span style="color: {s["accent"]}; font-size: 20px; '
+                    f'padding-top: 15px; max-width: 150px;"><span style="color: {s["accent"]}; font-size: 20px; '
                     f'font-weight: 800; text-transform: uppercase;">{text}</span></section>\n')
         elif level == 3:
             return (f'<section style="margin-top: 25px; margin-bottom: 10px; border-left: 4px solid {s["accent"]}; '
@@ -200,6 +222,14 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 f'font-size: {bullet_size}; line-height: 1.2;">{bullet}</span>'
                 f'<section style="font-size: 15px; line-height: 1.6; color: {s["text"]};">{text}</section></section>\n')
 
+    def thematic_break(self):
+        """Render horizontal rule (--- in Markdown) as empty.
+        
+        H2 headings already have border-top decoration, so we skip ---
+        to avoid duplicate lines when --- precedes a heading.
+        """
+        return ''
+
     def strong(self, text):
         s = self.style
         color = s["accent"] if self.style_name in ["terminal", "cyber"] else "inherit"
@@ -221,15 +251,17 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def table_head(self, text):
         s = self.style
-        bg = "#f2f2f2" if self.style_name == "swiss" else s["text"]
-        color = s["text"] if self.style_name == "swiss" else s["bg"]
-        return f'<thead style="background-color: {bg}; color: {color}; font-weight: bold;">{text}</thead>\n'
+        # All styles: light gray header, dark text — clean and universally readable
+        bg = "#f2f2f2"
+        color = "#1a1a1a"
+        # Store for use in table_cell (thead context)
+        self._thead_bg = bg
+        self._thead_color = color
+        return f'<thead>{text}</thead>\n'
 
     def table_body(self, text):
-        # We can't easily do nth-child in inline CSS for WeChat, 
-        # but mistune 3.x table_row doesn't give us the index.
-        # We will keep it simple with white background for all rows or 
-        # handle it in a post-processing step if really needed.
+        self._thead_bg = None
+        self._thead_color = None
         return f'<tbody>{text}</tbody>\n'
 
     def table_row(self, text):
@@ -240,7 +272,13 @@ class WeChatRenderer(mistune.HTMLRenderer):
         tag = 'th' if head else 'td'
         border = "#dddddd" if self.style_name == "swiss" else s["secondary"]
         padding = "12px 10px" if head else "10px"
-        return f'<{tag} style="border: 1px solid {border}; padding: {padding}; text-align: {align or "left"};">{text}</{tag}>'
+        if head:
+            # Explicitly set bg + color on every th — WeChat does not inherit from thead
+            bg = getattr(self, '_thead_bg', None) or ("#f2f2f2" if self.style_name == "swiss" else s["text"])
+            color = getattr(self, '_thead_color', None) or (s["text"] if self.style_name == "swiss" else s["bg"])
+            return (f'<th style="border: 1px solid {border}; padding: {padding}; text-align: {align or "left"}; '
+                    f'background-color: {bg}; color: {color}; font-weight: bold;">{text}</th>')
+        return f'<td style="border: 1px solid {border}; padding: {padding}; text-align: {align or "left"}; color: {s["text"]};">{text}</td>'
 
     def image(self, text, url, alt="", **kwargs):
         # mistune 3.x uses 'url' as the keyword for the image source
@@ -477,48 +515,7 @@ class WeChatPublisher:
     """WeChat Official Account Markdown Publisher with error handling."""
     
     # Styles inherited and adapted from frontend-slides project
-    STYLES = {
-        "swiss": {
-            "bg": "#ffffff", "accent": "#e62e2e", "text": "#000000", "secondary": "#666666",
-            "font": "Helvetica, Arial, sans-serif", "border_width": "3px"
-        },
-        "terminal": {
-            "bg": "#0d1117", "accent": "#39d353", "text": "#e6edf3", "secondary": "#8b949e",
-            "font": "JetBrains Mono, Menlo, Monaco, Courier New, monospace", "border_width": "4px"
-        },
-        "bold": {
-            "bg": "#1a1a1a", "accent": "#FF5722", "text": "#ffffff", "secondary": "#999999",
-            "font": "Archivo Black, Impact, sans-serif", "border_width": "10px"
-        },
-        "botanical": {
-            "bg": "#0f0f0f", "accent": "#d4a574", "text": "#e8e4df", "secondary": "#9a9590",
-            "font": "Cormorant, Georgia, serif", "border_width": "2px"
-        },
-        "notebook": {
-            "bg": "#f8f6f1", "accent": "#98d4bb", "text": "#1a1a1a", "secondary": "#555555",
-            "font": "Bodoni Moda, serif", "border_width": "4px"
-        },
-        "cyber": {
-            "bg": "#0a0f1c", "accent": "#00ffcc", "text": "#ffffff", "secondary": "#9ca3af",
-            "font": "Clash Display, sans-serif", "border_width": "4px"
-        },
-        "voltage": {
-            "bg": "#0066ff", "accent": "#d4ff00", "text": "#ffffff", "secondary": "#e0e0e0",
-            "font": "Syne, sans-serif", "border_width": "6px"
-        },
-        "geometry": {
-            "bg": "#faf9f7", "accent": "#f0b4d4", "text": "#1a1a1a", "secondary": "#5a7c6a",
-            "font": "Plus Jakarta Sans, sans-serif", "border_width": "4px"
-        },
-        "editorial": {
-            "bg": "#f5f3ee", "accent": "#1a1a1a", "text": "#1a1a1a", "secondary": "#555555",
-            "font": "Fraunces, serif", "border_width": "2px"
-        },
-        "ink": {
-            "bg": "#faf9f7", "accent": "#c41e3a", "text": "#1a1a1a", "secondary": "#444444",
-            "font": "Cormorant Garamond, serif", "border_width": "1px"
-        }
-    }
+    STYLES = {k: dict(v) for k, v in BUILTIN_STYLES.items()}
 
     def __init__(self, app_id: Optional[str], app_secret: Optional[str], verify_ssl: bool = True, enable_network: bool = True):
         """Initialize publisher with app credentials."""
@@ -528,6 +525,10 @@ class WeChatPublisher:
         self.app_secret = app_secret or ""
         self.verify_ssl = verify_ssl
         self.enable_network = enable_network
+        
+        # Load custom styles and merge with built-in styles
+        self.STYLES = self._load_custom_styles()
+        logger.info(f"✓ Loaded {len(self.STYLES)} styles ({len(self.STYLES) - 10} custom)")
         
         # Configure SSL
         configure_ssl(verify_ssl)
@@ -546,6 +547,59 @@ class WeChatPublisher:
         # Get access token
         self.access_token = self._get_access_token()
         logger.info("✓ Successfully obtained access token")
+
+    def _get_custom_styles_dir(self) -> str:
+        """Get the directory for custom style configurations."""
+        return os.path.join(os.path.expanduser("~/.config/publish-md-to-wechat/custom-styles"))
+
+    def _load_custom_styles(self) -> Dict[str, Dict[str, Any]]:
+        """Load custom styles from user config directory and merge with built-in styles.
+        
+        Custom styles take precedence over built-in styles with the same name.
+        Custom styles must be named with 'custom-' prefix to avoid accidental conflicts.
+        """
+        # Start with a copy of built-in styles
+        styles = dict(self.STYLES)
+        
+        custom_dir = self._get_custom_styles_dir()
+        if not os.path.exists(custom_dir):
+            try:
+                os.makedirs(custom_dir, exist_ok=True)
+                logger.debug(f"Created custom styles directory: {custom_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to create custom styles directory: {e}")
+                return styles
+        
+        # Scan for JSON files
+        try:
+            for filename in os.listdir(custom_dir):
+                if filename.endswith(".json") and filename.startswith("custom-"):
+                    filepath = os.path.join(custom_dir, filename)
+                    style_name = filename[:-5]  # Remove .json extension
+                    
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            custom_style = json.load(f)
+                        
+                        # Validate required fields
+                        required_fields = ["bg", "accent", "text", "secondary", "font"]
+                        missing = [field for field in required_fields if field not in custom_style]
+                        if missing:
+                            logger.warning(f"Skipping {filename}: missing required fields {missing}")
+                            continue
+                        
+                        styles[style_name] = custom_style
+                        logger.debug(f"✓ Loaded custom style: {style_name}")
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Skipping {filename}: invalid JSON - {e}")
+                    except Exception as e:
+                        logger.warning(f"Skipping {filename}: {e}")
+                        
+        except Exception as e:
+            logger.warning(f"Failed to scan custom styles directory: {e}")
+        
+        return styles
 
     def _token_cache_path(self) -> str:
         safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", self.app_id) if self.app_id else "unknown"
@@ -855,6 +909,8 @@ class WeChatPublisher:
                     # Handle lists (like tags or authors)
                     if isinstance(v, list):
                         v = ", ".join(map(str, v))
+                    # Strip Obsidian [[wikilink]] syntax
+                    v = re.sub(r'\[\[([^\]]+)\]\]', r'\1', str(v))
                     fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]}; text-transform: uppercase;">{k}:</strong> {v}</div>')
             
             if fm_items:
@@ -913,7 +969,19 @@ class WeChatPublisher:
             local_path_decoded = urllib.parse.unquote(local_path)
             found_path = None
             is_external = local_path.startswith(('http://', 'https://'))
-            
+
+            # Skip video/platform URLs — they are not images
+            VIDEO_HOSTS = ('youtube.com', 'youtu.be', 'vimeo.com', 'bilibili.com', 'v.qq.com')
+            if is_external and any(h in local_path for h in VIDEO_HOSTS):
+                logger.info(f"Skipping video URL (not an image): {local_path}")
+                # Replace entire <img ...> tag (including all attributes) with a text link
+                main_html = re.sub(
+                    rf'<img\s[^>]*src="{re.escape(local_path)}"[^>]*/?>',
+                    f'<a href="{local_path}" style="color: {self.STYLES.get(style_name, {}).get("accent", "#1a1a1a")};">▶ 视频链接</a>',
+                    main_html
+                )
+                continue
+
             if is_external:
                 if not upload_images:
                     continue
@@ -993,11 +1061,11 @@ class WeChatPublisher:
         if style_name == "swiss":
             footer = (f'<section style="margin-top: 50px; text-align: center; border-top: 1px solid #eeeeee; '
                      f'padding-top: 20px; font-size: 12px; font-weight: 600; letter-spacing: 1px; '
-                     f'color: {style["secondary"]}; text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
+                     f'color: {style["secondary"]}; text-transform: uppercase;">PUBLISHED VIA AIR7.FUN | STYLE: {style_name.upper()}</section></section>')
         else:
             footer = (f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; '
                      f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
-                     f'text-transform: uppercase;">PUBLISHED VIA AGENT SKILL | STYLE: {style_name.upper()}</section></section>')
+                     f'text-transform: uppercase;">PUBLISHED VIA AIR7.FUN | STYLE: {style_name.upper()}</section></section>')
         
         return header + fm_html + main_html + footer
 
@@ -1073,13 +1141,12 @@ def main():
     parser.add_argument("--secret", 
                        default=os.environ.get("WECHAT_APP_SECRET"),
                        help="WeChat AppSecret (or set WECHAT_APP_SECRET env var)")
-    parser.add_argument("--md", required=True, help="Path to MD file")
+    parser.add_argument("--md", help="Path to MD file (not required for --list-styles)")
     
     # Optional arguments
     parser.add_argument("--thumb", help="Path to thumb image (optional, will auto-generate if missing)")
     parser.add_argument("--style", default="swiss",
-                        choices=["swiss", "terminal", "bold", "botanical", "notebook", "cyber", "voltage", "geometry", "editorial", "ink"],
-                        help="Style preset (default: swiss)")
+                        help="Style preset: swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink, or custom-xxx (default: swiss)")
     parser.add_argument("--title", help="Article Title (optional, auto-detect from MD)")
     parser.add_argument("--verify-ssl", dest="verify_ssl", action="store_true",
                        help="Enable SSL verification (default: enabled)")
@@ -1101,6 +1168,10 @@ def main():
     logger.info("=" * 50)
     logger.info("WeChat Markdown Publisher v1.3 (Hardened for Agent Runs)")
     logger.info("=" * 50)
+    
+    # Validate --md is required
+    if not args.md:
+        parser.error("--md is required")
     
     enable_network = not (args.dry_run or args.validate)
     app_id = (args.id or os.environ.get("WECHAT_APP_ID") or "") if enable_network else (args.id or os.environ.get("WECHAT_APP_ID") or "")
@@ -1131,7 +1202,17 @@ def main():
                 frontmatter = yaml.safe_load(fm_match.group(1)) or {}
             except Exception:
                 pass
-        fm_author = str(frontmatter.get("author", "")).strip()
+        # Clean author: unwrap lists, strip Obsidian [[links]], remove quotes
+        # WeChat author field limit: 8 bytes (strictly enforced)
+        raw_author = frontmatter.get("author", "")
+        if isinstance(raw_author, list):
+            raw_author = ", ".join(str(a) for a in raw_author)
+        raw_author = str(raw_author).strip().strip("'\"")
+        raw_author = re.sub(r'\[\[([^\]]+)\]\]', r'\1', raw_author)
+        # Truncate to 8 bytes safely (avoid splitting multibyte chars)
+        encoded = raw_author.encode('utf-8')[:8]
+        fm_author = encoded.decode('utf-8', errors='ignore').strip()
+
         fm_digest = str(frontmatter.get("description", "") or frontmatter.get("digest", "") or frontmatter.get("summary", "")).strip()
         if fm_author:
             logger.info(f"Frontmatter author: {fm_author}")

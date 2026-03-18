@@ -1,377 +1,193 @@
-# Publish MD to WeChat Skill
+# Publish MD to WeChat
 
-**Current Version: v0.4.4**
-
-[English](#english) | [Chinese](#chinese)
+**v0.6.0** · [English](#english) | [中文](#中文)
 
 ---
 
 <a name="english"></a>
 ## English
 
-A specialized AI Agent skill to bridge the gap between Markdown and WeChat Official Account publishing.
+Publish Markdown articles to WeChat Official Account (公众号) drafts with professional styling, automatic image handling, and cover generation.
 
-### Core Features
-- **AST-Powered Rendering**: Powered by `mistune` 3.x for 100% reliable conversion of complex Markdown (nested lists, tables, etc.).
-- **Obsidian Ready**: Built-in support for `![[WikiLink]]` image syntax and automatic space handling.
-- **Smart Image Upload**: Automatically searches local directories for images and replaces them with permanent WeChat URLs.
-- **10+ Professional Styles**: Visual presets inherited from `frontend-slides`.
-- **Auto Cover Generation**: Dynamically creates a branded PNG cover based on your title and selected style. Supports local generation (via Pillow) and online fallback.
+### Features
 
-### Install as Agent Skill
-
-You can install this tool as a skill for your AI Agent (Claude Code, Trae, etc.):
-
-```bash
-# Install
-npx skills add https://github.com/walk4rever/publish-md-to-wechat --skill publish-md-to-wechat
-
-# Update
-npx skills update
-```
+- **AST-Powered Rendering** — `mistune` 3.x for reliable conversion of complex Markdown (nested lists, tables, code blocks)
+- **11 Visual Styles** — 3 core + 7 extend + unlimited custom styles
+- **Custom Style Replication** — Analyze any WeChat article URL, extract its visual style, save as reusable preset
+- **Obsidian Ready** — Native `![[WikiLink]]` image syntax support
+- **Smart Image Upload** — Local images, external URLs auto-uploaded to WeChat CDN
+- **Auto Cover Generation** — Branded PNG cover from title + style via Pillow
+- **YAML Frontmatter** — Auto-extracts title, author, description from frontmatter
+- **Video URL Detection** — YouTube/Bilibili links rendered as text links, not broken images
 
 ### Quick Start
 
-1. **Initialize Environment**:
-   ```bash
-   chmod +x install.sh
-   ./install.sh
-   ```
-   > **Why?** This creates a isolated Python virtual environment (`.venv`) and installs all required dependencies (including `mistune` for rendering, `Pillow` for cover generation, and `python-dotenv` for config).
-
-2. **Setup Credentials**: 
-   ```bash
-   cp env.example .env
-   # Edit .env and add your WECHAT_APP_ID and WECHAT_APP_SECRET
-   ```
-   > **Why?** The `.env` file securely stores your WeChat API credentials, allowing the script to authenticate without passing sensitive keys via command line.
-
-3. **Publish**:
-   ```bash
-   ./publish.sh --md path/to/article.md --style botanical
-   ```
-
-### Common Workflows
-
 ```bash
-# 1) Validate only (no WeChat API calls)
-python3 scripts/wechat_publisher.py --validate --md path/to/article.md
+# 1. Setup
+./install.sh
+cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 
-# 2) Dry-run render + validate, and save HTML locally (no WeChat API calls)
-python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html /tmp/wechat.html
+# 2. Publish
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style swiss
 
-# 3) Publish to Drafts (requires credentials)
-./publish.sh --md path/to/article.md --style swiss
+# 3. Preview (no API calls)
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 ```
 
-### Command Line Options
+### Styles
 
 ```bash
-./publish.sh \
-  --id YOUR_APP_ID \
-  --secret YOUR_APP_SECRET \
-  --md path/to/article.md \
-  --thumb path/to/cover.png \
-  --style swiss \
-  --no-verify-ssl \
-  -v  # Enable verbose logging
+# List all styles with descriptions
+.venv/bin/python3 scripts/styles.py --list
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--id` | WeChat AppID (Optional if set in `.env`) |
-| `--secret` | WeChat AppSecret (Optional if set in `.env`) |
-| `--md` | Path to Markdown file (Required) |
-| `--thumb` | Path to thumbnail image (optional, auto-generates if missing) |
-| `--style` | Style preset: swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink (default: swiss) |
-| `--title` | Article title (auto-detects from MD if omitted) |
-| `--verify-ssl` | Enable SSL verification (default: enabled) |
-| `--no-verify-ssl` | Disable SSL verification (use only for development) |
-| `--dry-run` | Render + validate locally; skip all WeChat API calls |
-| `--validate` | Validate inputs and local images only; skip all WeChat API calls |
-| `--out-html` | Write rendered HTML to a file (dry-run only) |
-| `-v, --verbose` | Enable verbose debug logging |
+**Core (recommended):**
 
-### Environment Variables
+| Style | Description |
+|-------|-------------|
+| `swiss` | Swiss International. White + red, grid-driven, professional. Technical articles, reports. |
+| `editorial` | Magazine editorial. Warm cream, serif, wide spacing. Opinion pieces, analysis. |
+| `ink` | Eastern ink. Warm white, crimson accent, max line-height. Humanities, deep writing. |
 
-You can provide credentials via a `.env` file (recommended) or shell environment variables:
+**Extend (7 more):** `notebook`, `geometry`, `botanical`, `terminal`, `bold`, `cyber`, `voltage`
 
-1. **Project-level `.env`** (Recommended):
-   Create a `.env` file in your project root (where you run the command from).
-   ```bash
-   WECHAT_APP_ID="your_app_id"
-   WECHAT_APP_SECRET="your_app_secret"
-   ```
+**Custom:** Analyze any WeChat article and replicate its style:
+```bash
+# Create custom style from article
+.venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --no-verify-ssl
 
-2. **Global Config** (Persists across updates):
-   Create `~/.config/publish-md-to-wechat/.env` to share credentials across projects.
-   ```bash
-   mkdir -p ~/.config/publish-md-to-wechat
-   echo 'WECHAT_APP_ID="your_app_id"' > ~/.config/publish-md-to-wechat/.env
-   echo 'WECHAT_APP_SECRET="your_app_secret"' >> ~/.config/publish-md-to-wechat/.env
-   ```
+# Rename
+.venv/bin/python3 scripts/styles.py --rename custom-old custom-new
 
-**Warning**: Do not modify the `.env` file inside the installed skill directory (e.g., inside `node_modules` or `.claude/skills`), as it will be overwritten during updates.
+# Use it
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style custom-kimi
+```
 
-Priority: Command line arguments > Project `.env` > Global `.env` > Shell variables.
+Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as JSON files with `custom-` prefix.
 
-### SSL Verification
-
-✅ **SSL verification is ENABLED by default**.
-
-If you are behind a corporate proxy / self-signed certificates and requests fail, you can disable it explicitly:
+### Command Reference
 
 ```bash
-./publish.sh --no-verify-ssl --id ... --secret ... --md ...
+.venv/bin/python3 scripts/wechat_publisher.py \
+  --md article.md \          # Markdown file (required)
+  --style swiss \            # Style preset (default: swiss)
+  --thumb cover.png \        # Custom cover image (optional, auto-generates)
+  --title "My Title" \       # Override title (auto-detects from frontmatter/H1)
+  --no-verify-ssl \          # Disable SSL verification
+  --dry-run --out-html /tmp/preview.html \  # Local preview
+  -v                         # Verbose logging
 ```
 
-**Security Note**: Prefer keeping SSL verification enabled in normal networks.
+```bash
+.venv/bin/python3 scripts/styles.py \
+  --list \                   # List all styles
+  --url <wechat-url> \       # Analyze article and create custom style
+  --file <local.html> \      # Analyze local HTML
+  --rename OLD NEW \         # Rename custom style
+  --name custom-xxx \        # Specify style name
+  --dry-run                  # Analyze only, don't save
+```
 
-### Caching (Token + Image)
+### Credentials
 
-To make agent runs more stable and avoid repeated uploads, the publisher stores caches on your machine:
+Priority: CLI args → project `.env` → `~/.config/publish-md-to-wechat/.env` → shell env vars.
 
-- Token cache: `token.<appid>.json`
-- Image cache: `image_cache.<appid>.json`
+```bash
+# Project-level (recommended)
+echo 'WECHAT_APP_ID=xxx' > .env
+echo 'WECHAT_APP_SECRET=xxx' >> .env
 
-Default location:
+# Global (persists across updates)
+mkdir -p ~/.config/publish-md-to-wechat
+echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
+```
+
+### Caching
+
+Token and image caches stored at:
 - macOS: `~/Library/Caches/publish-md-to-wechat/`
-- Linux: `$XDG_CACHE_HOME/publish-md-to-wechat/` or `~/.cache/publish-md-to-wechat/`
+- Linux: `~/.cache/publish-md-to-wechat/`
 
-### Available Styles
+### Error Reference
 
-Choose a style that matches your article's tone and content:
-
-| Style | Vibe | Best For |
-| :--- | :--- | :--- |
-| `swiss` | Clean, high-contrast, professional | Technical guides, reports |
-| `terminal` | Green text on dark, hacker aesthetic | Dev tools, coding tips |
-| `bold` | Vibrant cards on dark, high impact | Product launches, announcements |
-| `botanical` | Elegant, sophisticated, premium | Artistic pieces, luxury brands |
-| `notebook` | Cream paper with mint accents, tactile | Study notes, diaries |
-| `cyber` | Futuristic navy with cyan glow | AI, tech, web3 topics |
-| `voltage` | Electric blue with neon yellow | Energetic, creative pitches |
-| `geometry` | Soft pastels with rounded cards | Friendly, approachable content |
-| `editorial` | Witty, personality-driven, serif | Opinions, blogs, personal brands |
-| `ink` | Warm cream with crimson, literary | Storytelling, deep dives |
-
-**Example**:
-```bash
-# Use Swiss style (default)
---style swiss
-
-# Use Cyber style for tech articles
---style cyber
-
-# Use Editorial for blog posts
---style editorial
-```
-
-### Error Handling
-
-The publisher provides clear error messages for common issues:
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Validation Error: Markdown file not found` | MD file doesn't exist | Check file path |
-| `Auth Error: IP not whitelisted` | Server IP not in whitelist | Add IP to WeChat console |
-| `Auth Error: Invalid AppID` | Wrong credentials | Verify AppID and AppSecret |
-| `Upload Error: Image too large` | File > 2MB | Compress or resize image |
-| `Upload Error: Unsupported format` | Wrong image type | Use PNG, JPG, or GIF |
-
-### Debug Mode
-
-Use `-v` flag for detailed logging:
-```bash
-python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
-```
-
-### Roadmap (Next Steps)
-- [x] **Local Rendering Engine**: Integrated `Pillow` support for offline cover generation.
-- [x] **Global Configuration**: Support for `~/.config` to persist credentials across updates.
-- [x] **Local HTML Preview**: Generate HTML locally (`--dry-run --out-html`) for verification.
-- [ ] **Image Auto-Slicing**: Support for long images by automatic slicing to bypass WeChat size limits.
-- [ ] **Multi-Platform Support**: Extending the engine to support Zhihu and Juejin.
-
-### Credits
-Special thanks to the **[frontend-slides](https://github.com/walk4rever/frontend-slides)** project for the design DNA.
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `40164` IP whitelist | Server IP not allowed | Add IP in WeChat console |
+| `40125` / `40013` | Invalid credentials | Check `.env` |
+| `45009` Rate limit | Too many requests | Wait and retry |
+| `45110` Author limit | Author field > 8 bytes | Auto-truncated in v0.6.0 |
+| SSL errors | Corporate proxy | Add `--no-verify-ssl` |
 
 ---
 
-<a name="chinese"></a>
+<a name="中文"></a>
 ## 中文
 
-专门为 AI Agent 打造的微信公众号 Markdown 发布技能。
+将 Markdown 文章发布到微信公众号草稿箱，支持专业视觉样式、自动图片处理和封面生成。
 
-### 核心功能
-- **AST 驱动渲染**：使用 `mistune` 3.x 深度解析，完美处理复杂 Markdown（嵌套列表、代码块、表格）。
-- **Obsidian 友好**：原生支持 `![[WikiLink]]` 语法，并能自动处理含空格的文件名。
-- **智能图片上传**：递归搜索本地目录，自动将本地图片上传至微信素材库并替换为永久 URL。
-- **10+ 专业风格**：继承自 `frontend-slides` 的精美视觉预设（Swiss, Cyber, Botanical 等）。
-- **封面自动生成**：系统将根据标题和风格，自动生成高清 PNG 品牌标题卡。支持本地生成（基于 Pillow）与在线降级方案。
+### 功能
+
+- **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块）
+- **11 种视觉样式** — 3 核心 + 7 扩展 + 无限自定义
+- **样式复刻** — 分析任意微信文章 URL，提取视觉风格，保存为可复用预设
+- **Obsidian 兼容** — 原生支持 `![[WikiLink]]` 图片语法
+- **智能图片上传** — 本地图片、外部 URL 自动上传微信 CDN
+- **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
+- **YAML Frontmatter** — 自动提取标题、作者、摘要
+- **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接，不会当图片处理
 
 ### 快速开始
 
-1. **环境初始化**：
-   ```bash
-   chmod +x install.sh
-   ./install.sh
-   ```
-   > **为什么？** 此脚本会自动创建 Python 虚拟环境 (`.venv`) 并安装所有必需依赖（如渲染引擎 `mistune`、绘图引擎 `Pillow` 和环境管理 `python-dotenv`），确保脚本能稳定运行而不干扰系统环境。
-
-2. **配置凭证**：
-   ```bash
-   cp env.example .env
-   # 编辑 .env 文件，填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
-   ```
-   > **为什么？** `.env` 文件用于安全存储微信公众号 API 密钥，避免在命令行中泄露敏感信息。
-
-3. **发布文章**：
-   ```bash
-   ./publish.sh --md path/to/article.md --style botanical
-   ```
-
-### 常用工作流
-
 ```bash
-# 1）仅校验（不会调用任何微信 API，不需要 id/secret）
-python3 scripts/wechat_publisher.py --validate --md path/to/article.md
+# 1. 初始化
+./install.sh
+cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 
-# 2）干跑渲染 + 校验，并把 HTML 保存到本地（不会调用任何微信 API）
-python3 scripts/wechat_publisher.py --dry-run --md path/to/article.md --out-html /tmp/wechat.html
+# 2. 发布
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style swiss
 
-# 3）发布到草稿箱（需要凭证）
-./publish.sh --md path/to/article.md --style swiss
+# 3. 本地预览（不调用 API）
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 ```
 
-
-### 命令行参数
+### 样式管理
 
 ```bash
-python3 scripts/wechat_publisher.py \
-  --id 你的APPID \
-  --secret 你的APPSECRET \
-  --md 文章.md \
-  --thumb 封面.png \
-  -v  # 启用详细日志
+# 查看所有样式
+.venv/bin/python3 scripts/styles.py --list
+
+# 从微信文章复刻样式
+.venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --no-verify-ssl
+
+# 重命名
+.venv/bin/python3 scripts/styles.py --rename custom-old custom-new
 ```
 
-| 参数 | 说明 |
+**核心样式（推荐）：**
+
+| 样式 | 说明 |
 |------|------|
-| `--id` | 微信公众号 AppID（如果在 `.env` 中已配置则可选） |
-| `--secret` | 微信公众号 AppSecret（如果在 `.env` 中已配置则可选） |
-| `--md` | Markdown 文件路径（必填） |
-| `--thumb` | 封面图片路径（可选，不提供则自动生成） |
-| `--style` | 风格预设：swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink（默认：swiss） |
-| `--verify-ssl` | 启用 SSL 验证（默认开启） |
-| `--no-verify-ssl` | 关闭 SSL 验证（仅开发/特殊网络使用） |
-| `--dry-run` | 渲染 + 校验本地内容，不调用微信 API |
-| `--validate` | 仅校验输入与本地图片，不调用微信 API |
-| `--out-html` | 将渲染后的 HTML 写入文件（仅 dry-run 支持） |
+| `swiss` | 瑞士国际主义。白底红色，网格感强。适合技术文章、产品更新。 |
+| `editorial` | 杂志编辑。暖米色，衬线字体。适合观点文章、深度分析。 |
+| `ink` | 东方水墨。暖白底，深红强调。适合人文历史、深度长文。 |
 
-### 环境变量 | Environment Variables
+**扩展样式（7 种）：** `notebook`、`geometry`、`botanical`、`terminal`、`bold`、`cyber`、`voltage`
 
-你可以通过 `.env` 文件（推荐）或系统环境变量提供凭证：
+自定义样式存储在 `~/.config/publish-md-to-wechat/custom-styles/`。
 
-1. **项目级 `.env`** (推荐)：
-   在你的项目根目录（运行命令的地方）创建一个 `.env` 文件。
-   ```bash
-   WECHAT_APP_ID="your_app_id"
-   WECHAT_APP_SECRET="your_app_secret"
-   ```
+### 凭证配置
 
-2. **全局配置** (更新时不丢失)：
-   创建 `~/.config/publish-md-to-wechat/.env` 以在所有项目间共享凭证。
-   ```bash
-   mkdir -p ~/.config/publish-md-to-wechat
-   echo 'WECHAT_APP_ID="your_app_id"' > ~/.config/publish-md-to-wechat/.env
-   echo 'WECHAT_APP_SECRET="your_app_secret"' >> ~/.config/publish-md-to-wechat/.env
-   ```
-
-**警告**：不要修改安装 Skill 目录（例如 `node_modules` 或 `.claude/skills`）内的 `.env` 文件，因为更新时会被覆盖。
-
-**优先级**：命令行参数 > 项目 `.env` > 全局 `.env` > 系统环境变量。
-
-### SSL 验证 | SSL Verification
-
-✅ **SSL 验证默认开启**。
-
-如果你处在企业代理/自签名证书环境导致请求失败，可显式关闭：
-
-```bash
-./publish.sh --no-verify-ssl --id ... --secret ... --md ...
-```
-
-**安全提示**：正常网络环境建议保持 SSL 验证开启。
-
-### 缓存（Token + 图片）
-
-为了提高 agent 运行稳定性并避免重复上传，脚本会在本机写入缓存：
-
-- Token 缓存：`token.<appid>.json`
-- 图片缓存：`image_cache.<appid>.json`
-
-默认位置：
-- macOS：`~/Library/Caches/publish-md-to-wechat/`
-- Linux：`$XDG_CACHE_HOME/publish-md-to-wechat/` 或 `~/.cache/publish-md-to-wechat/`
-
-### 可用风格 | Available Styles
-
-选择与文章风格和内容相匹配的样式：
-
-| 风格 | Style | 适用场景 | Best For |
-| :--- | :--- | :--- | :--- |
-| `swiss` | Clean, high-contrast, professional 简洁高对比，专业 | 技术指南、报告 | Technical guides, reports |
-| `terminal` | Green text on dark, hacker aesthetic 暗黑终端，黑客风 | 开发工具、编程技巧 | Dev tools, coding tips |
-| `bold` | Vibrant cards on dark, high impact 暗黑霓虹，高冲击力 | 产品发布、公告 | Product launches, announcements |
-| `botanical` | Elegant, sophisticated, premium 优雅精致，高端 | 艺术内容、轻奢品牌 | Artistic pieces, luxury brands |
-| `notebook` | Cream paper with mint accents, tactile 奶油笔记本，薄荷点缀 | 学习笔记、日记 | Study notes, diaries |
-| `cyber` | Futuristic navy with cyan glow 未来科技感，霓虹蓝 | AI、科技、Web3 | AI, tech, web3 topics |
-| `voltage` | Electric blue with neon yellow 电压蓝，霓虹黄 | 活力创意演示 | Energetic, creative pitches |
-| `geometry` | Soft pastels with rounded cards 柔和粉彩，圆角卡片 | 亲和力内容 | Friendly, approachable content |
-| `editorial` | Witty, personality-driven, serif 智慧有个性，衬线体 | 观点、博客、个人品牌 | Opinions, blogs, personal brands |
-| `ink` | Warm cream with crimson, literary 暖奶油色，朱红点缀 | 故事叙述、深度内容 | Storytelling, deep dives |
-
-**示例 | Example**:
-```bash
-# 使用 Swiss 风格（默认）
---style swiss
-
-# 科技文章使用 Cyber 风格
---style cyber
-
-# 博客文章使用 Editorial 风格
---style editorial
-```
+优先级：命令行参数 → 项目 `.env` → `~/.config/publish-md-to-wechat/.env` → 系统环境变量
 
 ### 错误处理
 
-发布器为常见问题提供清晰的错误提示：
-
-| 错误 | 原因 | 解决方案 |
-|------|------|----------|
-| `Validation Error: Markdown file not found` | 文件不存在 | 检查文件路径 |
-| `Auth Error: IP not whitelisted` | IP 未在白名单 | 在微信后台添加 IP |
-| `Auth Error: Invalid AppID` | 凭证错误 | 检查 AppID 和 AppSecret |
-| `Upload Error: Image too large` | 图片超过 2MB | 压缩或缩小图片 |
-| `Upload Error: Unsupported format` | 格式不支持 | 使用 PNG、JPG 或 GIF |
-
-### 调试模式
-
-使用 `-v` 参数查看详细日志：
-```bash
-python3 scripts/wechat_publisher.py -v --id ... --secret ... --md ...
-```
-
-### 下一步优化计划
-- [x] **本地绘图引擎集成**：增加 `Pillow` 驱动，支持在无网络环境下生成更复杂的封面。
-- [x] **全局配置支持**：支持 `~/.config` 目录，确保 skill 更新后配置不丢失。
-- [x] **本地 HTML 预览**：通过 `--dry-run` 生成本地 HTML 文件进行效果确认。
-- [ ] **长图自动切片**：支持超长内容自动切分为多张图片，解决微信加载限制。
-- [ ] **多平台矩阵**：扩展引擎以支持知乎、掘金等平台的自动同步。
-
-### 致谢
-本项目中的所有视觉预设均改编自 **[frontend-slides](https://github.com/walk4rever/frontend-slides)** 项目，致以诚挚感谢。
+| 错误码 | 原因 | 解决方案 |
+|--------|------|----------|
+| `40164` | IP 未在白名单 | 在微信后台添加 IP |
+| `40125` / `40013` | 凭证错误 | 检查 `.env` |
+| `45110` | 作者字段超限 | v0.6.0 已自动截断 |
+| SSL 错误 | 企业代理 | 添加 `--no-verify-ssl` |
 
 ---
-*Developed by **Air7.fun**. Open-source under MIT.*
+
+*Developed by **Air7.fun** · Open-source under MIT*

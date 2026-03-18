@@ -47,19 +47,53 @@ logger = None
 # ============================================================
 
 def get_styles() -> dict:
-    """Get style configurations with accent colors for cover decorations."""
-    return {
-        "swiss":     {"bg": "#ffffff", "text": "#000000", "accent": "#e62e2e", "fontsize": 52},
-        "terminal":  {"bg": "#0d1117", "text": "#39d353", "accent": "#39d353", "fontsize": 48},
-        "cyber":     {"bg": "#0a0f1c", "text": "#00ffcc", "accent": "#00ffcc", "fontsize": 48},
-        "bold":      {"bg": "#1a1a1a", "text": "#ff5722", "accent": "#ff5722", "fontsize": 56},
-        "botanical": {"bg": "#0f0f0f", "text": "#d4a574", "accent": "#d4a574", "fontsize": 46},
-        "notebook":  {"bg": "#f8f6f1", "text": "#1a1a1a", "accent": "#98d4bb", "fontsize": 46},
-        "voltage":   {"bg": "#0066ff", "text": "#ffffff", "accent": "#d4ff00", "fontsize": 48},
-        "geometry":  {"bg": "#faf9f7", "text": "#1a1a1a", "accent": "#f0b4d4", "fontsize": 46},
-        "editorial": {"bg": "#f5f3ee", "text": "#1a1a1a", "accent": "#1a1a1a", "fontsize": 46},
-        "ink":       {"bg": "#faf9f7", "text": "#c41e3a", "accent": "#c41e3a", "fontsize": 46},
-    }
+    """Get style configurations for cover generation.
+
+    Derives from BUILTIN_STYLES in styles.py (single source of truth),
+    plus custom styles from config directory.
+    """
+    import json as _json
+
+    # Import BUILTIN_STYLES — handle being called from any working directory
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    if _script_dir not in sys.path:
+        sys.path.insert(0, _script_dir)
+    from styles import BUILTIN_STYLES
+
+    # Default cover font sizes per category
+    FONTSIZE = {"core": 48, "extend": 46}
+
+    styles = {}
+    for name, cfg in BUILTIN_STYLES.items():
+        styles[name] = {
+            "bg": cfg["bg"],
+            "text": cfg["text"],
+            "accent": cfg["accent"],
+            "fontsize": FONTSIZE.get(cfg.get("category"), 46),
+        }
+
+    # Load custom styles from config directory
+    custom_style_dir = os.path.expanduser("~/.config/publish-md-to-wechat/custom-styles")
+    if os.path.exists(custom_style_dir):
+        for filename in os.listdir(custom_style_dir):
+            if filename.startswith("custom-") and filename.endswith(".json"):
+                try:
+                    with open(os.path.join(custom_style_dir, filename), "r", encoding="utf-8") as f:
+                        custom_config = _json.load(f)
+                    style_name = filename.replace(".json", "")
+                    styles[style_name] = {
+                        "bg": custom_config.get("bg", "#ffffff"),
+                        "text": custom_config.get("text", "#1a1a1a"),
+                        "accent": custom_config.get("accent", "#916DD5"),
+                        "fontsize": 48,
+                    }
+                    if logger:
+                        logger.debug(f"Loaded custom style for cover: {style_name}")
+                except Exception as e:
+                    if logger:
+                        logger.debug(f"Failed to load custom style {filename}: {e}")
+
+    return styles
 
 
 # ============================================================
@@ -280,6 +314,38 @@ def _draw_decorations(draw, img, style_name: str, s: dict, width: int, height: i
         draw.ellipse([(-60, -60), (120, 120)], fill=pastel_accent)
         draw.ellipse([(width - 100, height - 80), (width + 40, height + 40)], fill=pastel_accent)
         draw.ellipse([(width - 200, -40), (width - 120, 40)], fill=_blend_color(accent_rgb, bg_rgb, 0.7))
+
+    elif style_name.startswith("custom-"):
+        # Custom styles: elegant accent bar + corner accent
+        # Top accent bar (gradient-like effect with multiple thin lines)
+        for i in range(0, 8, 2):
+            bar_height = 3
+            y_pos = i * (bar_height + 2)
+            alpha = 1.0 - (i * 0.15)
+            bar_color = _blend_color(accent_rgb, bg_rgb, i * 0.2)
+            draw.rectangle([(0, y_pos), (width, y_pos + bar_height)], fill=bar_color)
+        
+        # Bottom-right corner accent block
+        corner_size = 60
+        draw.polygon([
+            (width, height - corner_size),
+            (width, height),
+            (width - corner_size, height)
+        ], fill=accent_rgb)
+        
+        # Small decorative dot near corner
+        dot_radius = 8
+        draw.ellipse([
+            (width - corner_size - 30 - dot_radius, height - dot_radius - 10),
+            (width - corner_size - 30 + dot_radius, height + dot_radius - 10)
+        ], fill=accent_rgb)
+        
+        # Left side vertical accent line
+        line_height = height // 3
+        draw.rectangle([
+            (0, (height - line_height) // 2),
+            (4, (height + line_height) // 2)
+        ], fill=accent_rgb)
 
 
 def generate_local_cover(title: str, style_name: str, output_path: str) -> bool:

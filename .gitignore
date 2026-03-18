@@ -62,3 +62,4 @@ benchmark.md
 grading.json
 timing.json
 eval_metadata.json
+.judge-the-code/
