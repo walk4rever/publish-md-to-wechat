@@ -3,174 +3,1168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>publish-md-to-wechat | AI Agent WeChat Publishing Skill</title>
-    <meta name="description" content="Turn Markdown into beautiful WeChat articles with 10+ designer styles. The publishing skill every AI agent needs for Chinese content.">
+    <title>Publish MD to WeChat — The Publishing Pipeline for WeChat's 1.3B Users</title>
+    <meta name="description" content="The missing publishing pipeline for WeChat's 23M+ Official Accounts. Write in Markdown, publish with one command. Professional styles, auto image handling, cover generation.">
+    <meta property="og:title" content="Publish MD to WeChat — Markdown → 公众号 in One Command">
+    <meta property="og:description" content="The missing publishing pipeline for WeChat's 23M+ Official Accounts. 11 professional styles, smart image handling, auto cover generation.">
+    <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #09090b;
+            --bg-elevated: #18181b;
+            --bg-card: #1c1c21;
+            --bg-card-hover: #232329;
+            --border: rgba(255,255,255,0.08);
+            --border-hover: rgba(255,255,255,0.15);
+            --text: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #ef4444;
+            --accent-hover: #dc2626;
+            --accent-glow: rgba(239,68,68,0.15);
+            --accent-gold: #f59e0b;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-purple: #a855f7;
+            --gradient-warm: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
+            --gradient-subtle: linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(249,115,22,0.05) 100%);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             line-height: 1.6;
-            color: #1a1a2e;
-            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
-            min-height: 100vh;
-            color: #e4e4e7;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
         }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 60px 20px;
+
+        .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+        section { padding: 120px 0; }
+
+        /* ── Grid Background ── */
+        .grid-bg {
+            position: fixed; inset: 0; z-index: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 64px 64px;
+            pointer-events: none;
         }
-        .hero { text-align: center; margin-bottom: 60px; }
-        .logo {
-            font-size: 48px;
-            margin-bottom: 20px;
+        .content { position: relative; z-index: 1; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(9,9,11,0.8);
+            backdrop-filter: blur(20px) saturate(1.2);
+            border-bottom: 1px solid var(--border);
+        }
+        nav .container {
+            display: flex; align-items: center; justify-content: space-between;
+            height: 64px;
+        }
+        .nav-brand {
+            font-weight: 800; font-size: 16px;
+            color: var(--text);
+            text-decoration: none;
+            display: flex; align-items: center; gap: 10px;
+            letter-spacing: -0.02em;
+        }
+        .nav-brand .logo {
+            width: 28px; height: 28px;
+            background: var(--gradient-warm);
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .nav-links { display: flex; align-items: center; gap: 32px; }
+        .nav-links a {
+            color: var(--text-muted); text-decoration: none;
+            font-size: 14px; font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta {
+            background: var(--accent) !important;
+            color: white !important;
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-weight: 600 !important;
+            font-size: 13px !important;
+            transition: all 0.2s !important;
+        }
+        .nav-cta:hover { background: var(--accent-hover) !important; transform: translateY(-1px); }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 160px 0 100px;
+            text-align: center;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 600px;
+            background: radial-gradient(ellipse, rgba(239,68,68,0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(239,68,68,0.25);
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 13px; font-weight: 600;
+            color: #fca5a5;
+            margin-bottom: 32px;
+        }
+        .hero-badge .dot {
+            width: 6px; height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
         }
         h1 {
-            font-size: 38px;
-            font-weight: 700;
-            margin-bottom: 16px;
-            background: linear-gradient(90deg, #10b981, #06b6d4);
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 900;
+            line-height: 1.08;
+            letter-spacing: -0.04em;
+            margin-bottom: 24px;
+        }
+        h1 .gradient {
+            background: var(--gradient-warm);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .tagline {
-            font-size: 20px;
-            color: #a1a1aa;
-            margin-bottom: 30px;
+        h1 .cn {
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 700;
         }
-        .description {
-            font-size: 18px;
-            color: #d4d4d8;
+        .hero-sub {
+            font-size: clamp(17px, 2vw, 20px);
+            color: var(--text-secondary);
             max-width: 600px;
-            margin: 0 auto 40px;
-            line-height: 1.8;
+            margin: 0 auto 20px;
+            line-height: 1.7;
         }
-        .features {
+        .hero-market {
+            font-size: 15px;
+            color: var(--text-muted);
+            max-width: 540px;
+            margin: 0 auto 44px;
+            line-height: 1.7;
+        }
+        .hero-market strong { color: var(--text-secondary); }
+        .hero-actions {
+            display: flex; gap: 14px;
+            justify-content: center; flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-size: 15px; font-weight: 600;
+            text-decoration: none;
+            transition: all 0.25s;
+            cursor: pointer; border: none;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 0 32px rgba(239,68,68,0.3);
+        }
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 0 48px rgba(239,68,68,0.4);
+        }
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card);
+            transform: translateY(-1px);
+        }
+
+        /* ── Terminal Demo ── */
+        .hero-terminal {
+            max-width: 660px;
+            margin: 56px auto 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+        }
+        .term-bar {
+            display: flex; gap: 8px; align-items: center;
+            padding: 14px 18px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid var(--border);
+        }
+        .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .term-dot.r { background: #ef4444; }
+        .term-dot.y { background: #f59e0b; }
+        .term-dot.g { background: #22c55e; }
+        .term-title {
+            flex: 1; text-align: center;
+            font-size: 12px; color: var(--text-muted);
+            font-weight: 500;
+        }
+        .term-body {
+            padding: 22px 26px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px; line-height: 2.2;
+            color: #d4d4d8;
+        }
+        .term-body .prompt { color: #4ade80; }
+        .term-body .flag { color: #60a5fa; }
+        .term-body .val { color: #fb923c; }
+        .term-body .comment { color: #52525b; }
+        .term-body .success { color: #4ade80; }
+        .term-body .dim { color: #52525b; }
+
+        /* ── Market Opportunity (VC section) ── */
+        .market {
+            border-top: 1px solid var(--border);
+        }
+        .market-header { text-align: center; margin-bottom: 64px; }
+        .market-header .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .market-header h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
+        }
+        .market-header p { color: var(--text-secondary); font-size: 17px; max-width: 560px; margin: 0 auto; }
+
+        .market-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 64px;
+        }
+        .market-stat {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 32px 24px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .market-stat:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-3px);
+        }
+        .market-stat .num {
+            font-size: 40px;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .market-stat .num.red { color: var(--accent); }
+        .market-stat .num.gold { color: var(--accent-gold); }
+        .market-stat .num.green { color: var(--accent-green); }
+        .market-stat .num.blue { color: var(--accent-blue); }
+        .market-stat .label { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+        .market-stat .detail { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        .market-insight {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 24px;
-            margin: 40px 0;
+        }
+        .insight-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 32px;
+            transition: all 0.3s;
+        }
+        .insight-card:hover {
+            border-color: var(--border-hover);
+        }
+        .insight-card .icon { font-size: 28px; margin-bottom: 16px; }
+        .insight-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .insight-card p { color: var(--text-secondary); font-size: 14px; line-height: 1.8; }
+
+        /* ── Problem → Solution ── */
+        .problem {
+            border-top: 1px solid var(--border);
+        }
+        .problem-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+        .problem-text .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .problem-text h2 {
+            font-size: 32px; font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 20px; line-height: 1.2;
+        }
+        .problem-text p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 16px; line-height: 1.8;
+        }
+        .pain-list {
+            list-style: none; margin-top: 28px;
+        }
+        .pain-list li {
+            padding: 12px 0;
+            font-size: 15px;
+            display: flex; align-items: flex-start; gap: 12px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .pain-list li:last-child { border-bottom: none; }
+        .pain-list .icon { flex-shrink: 0; font-size: 18px; margin-top: 2px; }
+        .pain-list strong { color: var(--text); }
+
+        .solution-box {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 36px;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+        .solution-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--gradient-warm);
+        }
+        .solution-box h3 {
+            font-size: 18px; font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text);
+        }
+        .solution-flow { display: flex; flex-direction: column; gap: 16px; }
+        .flow-step {
+            display: flex; align-items: center; gap: 14px;
+            font-size: 14px; color: var(--text-secondary);
+        }
+        .flow-num {
+            flex-shrink: 0;
+            width: 30px; height: 30px;
+            background: var(--accent);
+            color: white;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13px;
+        }
+        .flow-arrow { color: var(--text-muted); margin-left: 12px; font-size: 14px; }
+
+        /* ── Features Grid ── */
+        .features { border-top: 1px solid var(--border); }
+        .features-header { text-align: center; margin-bottom: 64px; }
+        .features-header .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .features-header h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
+        }
+        .features-header p { color: var(--text-secondary); font-size: 17px; }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
         }
         .feature {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            padding: 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px;
+            transition: all 0.3s;
         }
-        .feature h3 {
-            color: #10b981;
-            margin-bottom: 12px;
-            font-size: 18px;
+        .feature:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+            transform: translateY(-3px);
         }
-        .feature p { color: #a1a1aa; font-size: 14px; }
-        .cta {
-            display: inline-block;
-            background: linear-gradient(90deg, #10b981, #06b6d4);
-            color: white;
-            padding: 16px 32px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 16px;
-            margin: 10px;
-            transition: transform 0.2s, box-shadow 0.2s;
+        .feature-icon {
+            width: 44px; height: 44px;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            margin-bottom: 16px;
         }
-        .cta:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4);
+        .feature-icon.red { background: rgba(239,68,68,0.1); }
+        .feature-icon.gold { background: rgba(245,158,11,0.1); }
+        .feature-icon.green { background: rgba(34,197,94,0.1); }
+        .feature-icon.blue { background: rgba(59,130,246,0.1); }
+        .feature-icon.purple { background: rgba(168,85,247,0.1); }
+        .feature-icon.warm { background: rgba(249,115,22,0.1); }
+        .feature h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .feature p { color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
+
+        /* ── Styles Showcase ── */
+        .styles-section { border-top: 1px solid var(--border); }
+        .styles-header { text-align: center; margin-bottom: 64px; }
+        .styles-header .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
         }
-        .cta.secondary {
-            background: transparent;
-            border: 2px solid #10b981;
+        .styles-header h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
         }
-        .styles {
-            background: rgba(255,255,255,0.03);
-            border-radius: 12px;
-            padding: 30px;
-            margin: 40px 0;
+        .styles-header p { color: var(--text-secondary); font-size: 17px; max-width: 560px; margin: 0 auto; }
+
+        .styles-trio {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-bottom: 40px;
         }
-        .styles h2 { margin-bottom: 20px; font-size: 24px; }
-        .style-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
+        .style-card {
+            border-radius: 14px;
+            padding: 32px 28px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
         }
-        .style-tag {
-            background: rgba(16, 185, 129, 0.2);
-            color: #6ee7b7;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
+        .style-card:hover { transform: translateY(-4px); }
+
+        /* Swiss */
+        .style-swiss {
+            background: #ffffff;
+            border: 1px solid #e4e4e7;
+            color: #18181b;
         }
-        .footer {
+        .style-swiss .style-accent {
+            width: 40px; height: 4px;
+            background: #ef4444;
+            margin-bottom: 20px;
+        }
+        .style-swiss h3 { font-size: 20px; font-weight: 800; margin-bottom: 6px; color: #18181b; }
+        .style-swiss .style-sub { color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+        .style-swiss p { font-size: 14px; color: #52525b; line-height: 1.7; }
+        .style-swiss .style-tag { margin-top: 16px; font-size: 12px; color: #ef4444; font-weight: 600; }
+
+        /* Editorial */
+        .style-editorial {
+            background: #faf6f0;
+            border: 1px solid #e8ddd0;
+            color: #2c2520;
+        }
+        .style-editorial h3 {
+            font-family: 'Noto Serif SC', Georgia, serif;
+            font-size: 20px; font-weight: 700;
+            margin-bottom: 6px; color: #2c2520;
+        }
+        .style-editorial .style-sub { color: #a89580; font-size: 12px; font-style: italic; margin-bottom: 14px; }
+        .style-editorial p { font-size: 14px; color: #6b5e50; line-height: 1.8; }
+        .style-editorial .style-tag { margin-top: 16px; font-size: 12px; color: #a89580; font-weight: 600; }
+
+        /* Ink */
+        .style-ink {
+            background: #f8f5f0;
+            border: 1px solid #e2d8cc;
+            color: #2d3436;
+        }
+        .style-ink .style-accent {
+            width: 3px; height: 24px;
+            background: #c41e3a;
+            margin-bottom: 20px;
+        }
+        .style-ink h3 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 20px; font-weight: 700;
+            color: #2d3436;
+            margin-bottom: 6px;
+        }
+        .style-ink .style-sub { color: #c41e3a; font-size: 12px; margin-bottom: 14px; letter-spacing: 0.05em; }
+        .style-ink p { font-size: 14px; color: #5a5249; line-height: 1.9; }
+        .style-ink .style-tag { margin-top: 16px; font-size: 12px; color: #c41e3a; font-weight: 600; }
+
+        .styles-more {
             text-align: center;
-            margin-top: 60px;
-            color: #71717a;
-            font-size: 14px;
+            padding: 28px;
+            background: var(--bg-card);
+            border-radius: 14px;
+            border: 1px solid var(--border);
         }
-        .github-link {
-            color: #10b981;
+        .styles-more p { font-size: 14px; color: var(--text-secondary); }
+        .styles-more .tags {
+            margin-top: 12px;
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+        }
+        .styles-more .tag {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
+            padding: 5px 14px;
+            border-radius: 7px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* ── Custom Style Replication ── */
+        .custom-section {
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+        .custom-section .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .custom-section h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
+        }
+        .custom-section > p {
+            color: var(--text-secondary); font-size: 17px;
+            max-width: 520px; margin: 0 auto 48px;
+        }
+        .custom-flow {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 840px;
+            margin: 0 auto;
+        }
+        .custom-step {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 32px 24px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .custom-step:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-3px);
+        }
+        .custom-step .step-icon { font-size: 32px; margin-bottom: 14px; }
+        .custom-step h4 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+        .custom-step p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+        .custom-step code {
+            display: block;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 10px 12px;
+            margin-top: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent);
+            word-break: break-all;
+        }
+
+        /* ── Architecture ── */
+        .arch-section {
+            border-top: 1px solid var(--border);
+        }
+        .arch-header { text-align: center; margin-bottom: 64px; }
+        .arch-header .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .arch-header h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
+        }
+        .arch-header p { color: var(--text-secondary); font-size: 17px; }
+
+        .arch-pipeline {
+            max-width: 720px;
+            margin: 0 auto;
+        }
+        .arch-step {
+            display: flex; gap: 24px;
+            padding: 28px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .arch-step:last-child { border-bottom: none; }
+        .arch-icon {
+            flex-shrink: 0;
+            width: 48px; height: 48px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+        }
+        .arch-content h4 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .arch-content p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+
+        /* ── Install ── */
+        .install {
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+        .install .label {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+        .install h2 {
+            font-size: 36px; font-weight: 800;
+            letter-spacing: -0.03em; margin-bottom: 12px;
+        }
+        .install > p {
+            color: var(--text-secondary); font-size: 17px;
+            margin-bottom: 48px;
+        }
+        .install-steps {
+            max-width: 580px;
+            margin: 0 auto 48px;
+            text-align: left;
+        }
+        .install-step {
+            display: flex; gap: 16px;
+            margin-bottom: 24px;
+        }
+        .istep-num {
+            flex-shrink: 0;
+            width: 32px; height: 32px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #fca5a5;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13px;
+        }
+        .istep-content h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+        .istep-content code {
+            display: block;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #d4d4d8;
+            margin-top: 8px;
+        }
+
+        /* ── CTA ── */
+        .final-cta {
+            border-top: 1px solid var(--border);
+            text-align: center;
+            position: relative;
+        }
+        .final-cta::before {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 50%; transform: translateX(-50%);
+            width: 600px; height: 400px;
+            background: radial-gradient(ellipse, rgba(239,68,68,0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .final-cta h2 {
+            font-size: 40px; font-weight: 900;
+            letter-spacing: -0.03em;
+            margin-bottom: 16px;
+        }
+        .final-cta p {
+            color: var(--text-secondary); font-size: 17px;
+            max-width: 480px; margin: 0 auto 36px;
+            line-height: 1.7;
+        }
+        .final-cta .btn { margin: 0 8px; }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 48px 0;
+        }
+        .footer-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .footer-brand {
+            font-weight: 700; font-size: 14px;
+            color: var(--text-muted);
+        }
+        .footer-links { display: flex; gap: 24px; }
+        .footer-links a {
+            color: var(--text-muted);
             text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: var(--text-secondary); }
+        .footer-mit { font-size: 13px; color: var(--text-muted); }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .styles-trio { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
+            .custom-flow { grid-template-columns: 1fr; max-width: 380px; }
+            .market-stats { grid-template-columns: repeat(2, 1fr); }
+            .market-insight { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 720px) {
+            .problem-grid { grid-template-columns: 1fr; gap: 48px; }
+            .features-grid { grid-template-columns: 1fr; }
+            .nav-links a:not(.nav-cta) { display: none; }
+            .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+            section { padding: 80px 0; }
+            .hero { padding: 120px 0 80px; }
+            .market-stats { grid-template-columns: 1fr 1fr; }
         }
     </style>
 </head>
 <body>
+
+<div class="grid-bg"></div>
+<div class="content">
+
+<!-- ── Nav ── -->
+<nav>
     <div class="container">
-        <div class="hero">
-            <div class="logo">📱</div>
-            <h1>publish-md-to-wechat</h1>
-            <p class="tagline">Turn Markdown into beautiful WeChat articles</p>
-            <p class="description">
-                The publishing skill every AI agent needs for Chinese content. 
-                Transform your Markdown content into professional WeChat articles 
-                with 10+ designer-curated visual styles.
-            </p>
-            <div>
-                <a href="https://github.com/walk4rever/publish-md-to-wechat" class="cta">View on GitHub →</a>
-                <a href="#styles" class="cta secondary">Explore Styles</a>
-            </div>
-        </div>
-
-        <div class="styles" id="styles">
-            <h2>🎨 10+ Designer Styles</h2>
-            <div class="style-list">
-                <span class="style-tag">Minimalist</span>
-                <span class="style-tag">Tech</span>
-                <span class="style-tag">Elegant</span>
-                <span class="style-tag">Bold</span>
-                <span class="style-tag">Nature</span>
-                <span class="style-tag">Dark</span>
-                <span class="style-tag">Paper</span>
-                <span class="style-tag">Gradient</span>
-                <span class="style-tag">Classic</span>
-                <span class="style-tag">Modern</span>
-            </div>
-        </div>
-
-        <div class="features">
-            <div class="feature">
-                <h3>🤖 AI Agent Ready</h3>
-                <p>Built specifically for AI agents to publish content to WeChat automatically. Perfect for automated content workflows.</p>
-            </div>
-            <div class="feature">
-                <h3>✨ 10+ Visual Styles</h3>
-                <p>Choose from professionally designed templates — from minimalist to bold, tech to elegant.</p>
-            </div>
-            <div class="feature">
-                <h3>📝 Markdown to WeChat</h3>
-                <p>Write in Markdown, publish to WeChat. Preserve formatting, images, and code blocks seamlessly.</p>
-            </div>
-            <div class="feature">
-                <h3>🖼️ Auto Image Handling</h3>
-                <p>Automatically upload images to WeChat and insert them into your article with proper references.</p>
-            </div>
-        </div>
-
-        <div class="footer">
-            <p>Built by <a href="https://github.com/walk4rever" class="github-link">@walk4rever</a></p>
-            <p>Open Source • Free to Use</p>
+        <a href="#" class="nav-brand">
+            <span class="logo">📝</span>
+            publish-md-to-wechat
+        </a>
+        <div class="nav-links">
+            <a href="#market">Market</a>
+            <a href="#features">Features</a>
+            <a href="#styles">Styles</a>
+            <a href="#install">Install</a>
+            <a href="https://github.com/walk4rever/publish-md-to-wechat" class="nav-cta">GitHub →</a>
         </div>
     </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+    <div class="container">
+        <div class="hero-badge">
+            <span class="dot"></span>
+            v0.6.0 · Open Source · MIT License
+        </div>
+        <h1>
+            The Missing Pipeline for<br>
+            <span class="gradient cn">微信公众号</span> <span class="gradient">Publishing</span>
+        </h1>
+        <p class="hero-sub">
+            Write in Markdown. Publish with one command. Your article arrives in the draft box — styled, images uploaded, cover generated, ready to send.
+        </p>
+        <p class="hero-market">
+            Serving the <strong>23 million+ WeChat Official Accounts</strong> that reach
+            <strong>1.3 billion monthly active users</strong> — the world's largest content ecosystem with no modern publishing tools.
+        </p>
+        <div class="hero-actions">
+            <a href="https://github.com/walk4rever/publish-md-to-wechat" class="btn btn-primary">
+                Get Started →
+            </a>
+            <a href="#market" class="btn btn-secondary">
+                See the Opportunity
+            </a>
+        </div>
+
+        <div class="hero-terminal">
+            <div class="term-bar">
+                <div class="term-dot r"></div>
+                <div class="term-dot y"></div>
+                <div class="term-dot g"></div>
+                <div class="term-title">publish-md-to-wechat</div>
+            </div>
+            <div class="term-body">
+                <div><span class="prompt">$</span> ./install.sh</div>
+                <div><span class="dim">✓ Dependencies installed, .venv ready</span></div>
+                <div style="margin-top:6px"><span class="prompt">$</span> python3 scripts/wechat_publisher.py <span class="flag">--md</span> <span class="val">article.md</span> <span class="flag">--style</span> <span class="val">swiss</span></div>
+                <div><span class="dim">  ⟳ Parsing Markdown (mistune AST)...</span></div>
+                <div><span class="dim">  ⟳ Uploading 3 images to WeChat CDN...</span></div>
+                <div><span class="dim">  ⟳ Generating cover (swiss style)...</span></div>
+                <div><span class="success">  ✓ Draft created! media_id: Gf8x...kQ2w</span></div>
+                <div style="margin-top:6px"><span class="comment"># → Open WeChat MP → 草稿箱 → Preview → Publish 🎉</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Market Opportunity ── -->
+<section class="market" id="market">
+    <div class="container">
+        <div class="market-header">
+            <div class="label">Market Opportunity</div>
+            <h2>The World's Largest Content Platform Has No Modern Tools</h2>
+            <p>WeChat is not just a messaging app — it's a content distribution ecosystem bigger than WordPress, Medium, and Substack combined.</p>
+        </div>
+
+        <div class="market-stats">
+            <div class="market-stat">
+                <div class="num red">1.3B</div>
+                <div class="label">Monthly Active Users</div>
+                <div class="detail">WeChat total user base</div>
+            </div>
+            <div class="market-stat">
+                <div class="num gold">23M+</div>
+                <div class="label">Official Accounts</div>
+                <div class="detail">Brands, creators, enterprises</div>
+            </div>
+            <div class="market-stat">
+                <div class="num green">3.6M</div>
+                <div class="label">Articles Published Daily</div>
+                <div class="detail">Each needing formatting work</div>
+            </div>
+            <div class="market-stat">
+                <div class="num blue">30 min</div>
+                <div class="label">Wasted Per Article</div>
+                <div class="detail">On manual formatting alone</div>
+            </div>
+        </div>
+
+        <div class="market-insight">
+            <div class="insight-card">
+                <div class="icon">🎯</div>
+                <h3>Underserved Market</h3>
+                <p>WordPress has 60,000+ plugins. Substack raised $85M. Medium has rich APIs. WeChat's publishing ecosystem? Still stuck with a basic web editor from 2014. Every serious publisher is looking for a better workflow.</p>
+            </div>
+            <div class="insight-card">
+                <div class="icon">🚀</div>
+                <h3>Wedge Strategy</h3>
+                <p>Start with the power users — developers, technical writers, content teams — who already think in Markdown. Expand to visual editors, team workflows, and enterprise content ops. The CLI is the wedge; the platform is the play.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Problem → Solution ── -->
+<section class="problem">
+    <div class="container">
+        <div class="problem-grid">
+            <div class="problem-text">
+                <div class="label">The Problem</div>
+                <h2>WeChat's editor is a formatting nightmare</h2>
+                <p>
+                    You write great content in Markdown. Then you spend 30 minutes fighting WeChat's editor
+                    to make it look decent — copy-pasting, re-uploading images, fixing broken formatting.
+                </p>
+                <ul class="pain-list">
+                    <li><span class="icon">😤</span> <span><strong>Formatting destroyed</strong> on paste — code blocks, tables, nested lists all break</span></li>
+                    <li><span class="icon">🖼️</span> <span><strong>Images re-uploaded</strong> manually — one by one, every single time</span></li>
+                    <li><span class="icon">🎨</span> <span><strong>Every article looks the same</strong> — no way to apply professional typography</span></li>
+                    <li><span class="icon">⏱️</span> <span><strong>30+ minutes wasted</strong> per article on formatting instead of writing</span></li>
+                </ul>
+            </div>
+            <div class="solution-box">
+                <h3>With publish-md-to-wechat:</h3>
+                <div class="solution-flow">
+                    <div class="flow-step">
+                        <div class="flow-num">1</div>
+                        <span>Write in Markdown (Obsidian, VS Code, any editor)</span>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="flow-num">2</div>
+                        <span>Run one command — pick a style</span>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="flow-num">3</div>
+                        <span>Article in draft box — styled, images uploaded, cover ready</span>
+                    </div>
+                    <div class="flow-arrow">↓</div>
+                    <div class="flow-step">
+                        <div class="flow-num">4</div>
+                        <span>Preview → Publish 🎉</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Features ── -->
+<section class="features" id="features">
+    <div class="container">
+        <div class="features-header">
+            <div class="label">Features</div>
+            <h2>Everything you need, nothing you don't</h2>
+            <p>From Markdown parsing to WeChat draft creation — handled end-to-end.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature">
+                <div class="feature-icon red">🧩</div>
+                <h3>AST-Powered Rendering</h3>
+                <p>mistune 3.x parses complex Markdown — nested lists, tables, code blocks, footnotes — into pixel-perfect HTML.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon gold">🎨</div>
+                <h3>11 Visual Styles</h3>
+                <p>3 timeless classics + 7 extended presets + unlimited custom styles. Professional typography, battle-tested on WeChat.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon purple">🔁</div>
+                <h3>Style Replication</h3>
+                <p>See a WeChat article you love? Paste its URL. We extract the visual DNA and save it as your custom preset.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon blue">🖼️</div>
+                <h3>Smart Image Upload</h3>
+                <p>Local files, external URLs, Obsidian ![[WikiLinks]] — all auto-uploaded to WeChat CDN with caching.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon warm">🎭</div>
+                <h3>Auto Cover Generation</h3>
+                <p>Pillow-powered branded PNG covers from your title + style accent colors. No design tools needed.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon green">📋</div>
+                <h3>YAML Frontmatter</h3>
+                <p>Auto-extracts title, author, description. Works with Obsidian, Jekyll, Hugo, and any frontmatter-based workflow.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon blue">👀</div>
+                <h3>Dry Run Preview</h3>
+                <p>Generate styled HTML locally without any API calls. Review your article before publishing.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon purple">🔐</div>
+                <h3>Flexible Credentials</h3>
+                <p>Project .env, global config, or shell vars. Multi-level priority, never hardcoded, always secure.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon warm">🎬</div>
+                <h3>Video URL Detection</h3>
+                <p>YouTube & Bilibili links rendered as clean text links, not broken image placeholders.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Styles Showcase ── -->
+<section class="styles-section" id="styles">
+    <div class="container">
+        <div class="styles-header">
+            <div class="label">Style System</div>
+            <h2>The Classic Trio</h2>
+            <p>Three timeless styles covering 90% of content needs. Each rooted in a century-old design tradition.</p>
+        </div>
+
+        <div class="styles-trio">
+            <div class="style-card style-swiss">
+                <div class="style-accent"></div>
+                <h3>Swiss</h3>
+                <div class="style-sub">Swiss International Style</div>
+                <p>White canvas, red accents, grid-driven precision. Born from Müller-Brockmann's grid system, refined through Apple's design language.</p>
+                <div class="style-tag">↳ Technical articles · Reports · Announcements</div>
+            </div>
+            <div class="style-card style-editorial">
+                <h3>Editorial</h3>
+                <div class="style-sub">Magazine Heritage</div>
+                <p>Warm cream paper, serif typography, generous spacing. A century of print journalism distilled — The New Yorker, in WeChat.</p>
+                <div class="style-tag">↳ Opinion pieces · Analysis · Personal brands</div>
+            </div>
+            <div class="style-card style-ink">
+                <div class="style-accent"></div>
+                <h3>Ink · 水墨</h3>
+                <div class="style-sub">Eastern Calligraphy Tradition</div>
+                <p>Warm white ground, deep crimson accent, maximal line-height. Chinese calligraphy meeting modern digital publishing.</p>
+                <div class="style-tag">↳ Humanities · Culture · Deep writing</div>
+            </div>
+        </div>
+
+        <div class="styles-more">
+            <p><strong>+7 extended styles</strong> for specific scenarios:</p>
+            <div class="tags">
+                <span class="tag">notebook</span>
+                <span class="tag">geometry</span>
+                <span class="tag">botanical</span>
+                <span class="tag">terminal</span>
+                <span class="tag">bold</span>
+                <span class="tag">cyber</span>
+                <span class="tag">voltage</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Custom Style Replication ── -->
+<section class="custom-section">
+    <div class="container">
+        <div class="label">Style Replication</div>
+        <h2>See a style you love? Clone it.</h2>
+        <p>Analyze any WeChat article, extract its visual DNA, and save it as your own reusable preset.</p>
+        <div class="custom-flow">
+            <div class="custom-step">
+                <div class="step-icon">🔗</div>
+                <h4>Paste a URL</h4>
+                <p>Point to any WeChat article with a style you admire.</p>
+                <code>styles.py --url https://mp.weixin.qq.com/s/xxx</code>
+            </div>
+            <div class="custom-step">
+                <div class="step-icon">🧬</div>
+                <h4>Auto-Extract</h4>
+                <p>Colors, fonts, spacing, borders — all extracted and saved as JSON.</p>
+                <code>→ custom-kimi.json saved</code>
+            </div>
+            <div class="custom-step">
+                <div class="step-icon">✨</div>
+                <h4>Publish with it</h4>
+                <p>Use your custom style just like any built-in preset.</p>
+                <code>--style custom-kimi</code>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Architecture ── -->
+<section class="arch-section">
+    <div class="container">
+        <div class="arch-header">
+            <div class="label">Architecture</div>
+            <h2>A Modular Pipeline</h2>
+            <p>Every stage is independent, testable, and extensible.</p>
+        </div>
+        <div class="arch-pipeline">
+            <div class="arch-step">
+                <div class="arch-icon">📄</div>
+                <div class="arch-content">
+                    <h4>Markdown → AST</h4>
+                    <p>mistune 3.x parses your Markdown into a structured Abstract Syntax Tree. Handles nested lists, tables, code blocks, frontmatter, and Obsidian WikiLinks.</p>
+                </div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-icon">🎨</div>
+                <div class="arch-content">
+                    <h4>Style Engine</h4>
+                    <p>Applies one of 11+ visual styles as inline CSS — the only way to style WeChat articles. Custom styles from JSON presets or URL extraction.</p>
+                </div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-icon">🖼️</div>
+                <div class="arch-content">
+                    <h4>Image Processor</h4>
+                    <p>Local files, external URLs, and WikiLinks — all resolved, uploaded to WeChat CDN, and replaced with permanent media URLs.</p>
+                </div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-icon">🎭</div>
+                <div class="arch-content">
+                    <h4>Cover Generator</h4>
+                    <p>Pillow-based branded PNG cover from your title + style accent colors. Automatic or custom override.</p>
+                </div>
+            </div>
+            <div class="arch-step">
+                <div class="arch-icon">📡</div>
+                <div class="arch-content">
+                    <h4>WeChat API Client</h4>
+                    <p>Upload media, create draft, handle token refresh. Auto-retry with exponential backoff. Error handling for all known WeChat API edge cases.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Install ── -->
+<section class="install" id="install">
+    <div class="container">
+        <div class="label">Get Started</div>
+        <h2>Up and running in 60 seconds</h2>
+        <p>Python 3, one script, one .env file. That's it.</p>
+        <div class="install-steps">
+            <div class="install-step">
+                <div class="istep-num">1</div>
+                <div class="istep-content">
+                    <h4>Install dependencies</h4>
+                    <code>git clone https://github.com/walk4rever/publish-md-to-wechat && cd publish-md-to-wechat && ./install.sh</code>
+                </div>
+            </div>
+            <div class="install-step">
+                <div class="istep-num">2</div>
+                <div class="istep-content">
+                    <h4>Add your WeChat credentials</h4>
+                    <code>cp env.example .env  # fill in WECHAT_APP_ID & WECHAT_APP_SECRET</code>
+                </div>
+            </div>
+            <div class="install-step">
+                <div class="istep-num">3</div>
+                <div class="istep-content">
+                    <h4>Publish your first article</h4>
+                    <code>python3 scripts/wechat_publisher.py --md article.md --style swiss</code>
+                </div>
+            </div>
+        </div>
+        <a href="https://github.com/walk4rever/publish-md-to-wechat" class="btn btn-primary">
+            View on GitHub →
+        </a>
+    </div>
+</section>
+
+<!-- ── Final CTA ── -->
+<section class="final-cta">
+    <div class="container">
+        <h2>Stop Fighting the Editor.<br>Start Publishing.</h2>
+        <p>Join the publishers who write in Markdown and let the pipeline handle the rest. Free, open source, MIT licensed.</p>
+        <div>
+            <a href="https://github.com/walk4rever/publish-md-to-wechat" class="btn btn-primary">
+                Get Started Free →
+            </a>
+            <a href="https://github.com/walk4rever/publish-md-to-wechat" class="btn btn-secondary">
+                ⭐ Star on GitHub
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+    <div class="container">
+        <div class="footer-inner">
+            <div class="footer-brand">📝 publish-md-to-wechat</div>
+            <div class="footer-links">
+                <a href="https://github.com/walk4rever/publish-md-to-wechat">GitHub</a>
+                <a href="https://github.com/walk4rever/publish-md-to-wechat/issues">Issues</a>
+                <a href="https://air7.fun">Air7.fun</a>
+            </div>
+            <div class="footer-mit">MIT License · Free to use, modify, and distribute</div>
+        </div>
+    </div>
+</footer>
+
+</div>
 </body>
 </html>

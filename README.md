@@ -2,23 +2,49 @@
 
 **v0.6.0** · [English](#english) | [中文](#中文)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **The missing publishing pipeline for WeChat's 1.3 billion users.**
+> Write in Markdown. Publish with one command. Beautiful articles, zero formatting pain.
+
 ---
 
 <a name="english"></a>
 ## English
 
-Publish Markdown articles to WeChat Official Account (公众号) drafts with professional styling, automatic image handling, and cover generation.
+### The Problem
 
-### Features
+WeChat Official Accounts (公众号) power **23 million+ publishers** — brands, creators, media, enterprises — reaching the world's largest messaging audience. Yet every publisher faces the same bottleneck: WeChat's built-in editor destroys formatting, forces manual image uploads, and produces articles that all look the same.
 
-- **AST-Powered Rendering** — `mistune` 3.x for reliable conversion of complex Markdown (nested lists, tables, code blocks)
-- **11 Visual Styles** — 3 core + 7 extend + unlimited custom styles
-- **Custom Style Replication** — Analyze any WeChat article URL, extract its visual style, save as reusable preset
-- **Obsidian Ready** — Native `![[WikiLink]]` image syntax support
-- **Smart Image Upload** — Local images, external URLs auto-uploaded to WeChat CDN
-- **Auto Cover Generation** — Branded PNG cover from title + style via Pillow
-- **YAML Frontmatter** — Auto-extracts title, author, description from frontmatter
-- **Video URL Detection** — YouTube/Bilibili links rendered as text links, not broken images
+**publish-md-to-wechat** is the open-source CLI that eliminates this friction: write in Markdown, run one command, and a professionally styled article — with images uploaded, cover generated, and formatting preserved — lands in your draft box ready to publish.
+
+### Why It Matters
+
+| Metric | Impact |
+|--------|--------|
+| **23M+ Official Accounts** | Every one needs a better publishing workflow |
+| **30+ min saved per article** | Manual formatting → one command |
+| **11 professional styles** | Consistent brand identity, no design skills needed |
+| **Zero lock-in** | MIT-licensed, your Markdown stays yours |
+
+### How It Works
+
+```
+article.md → [Markdown AST] → [Style Engine] → [Styled HTML]
+                                      ↓
+                              [Image Processor]
+                              · local files → WeChat CDN
+                              · external URLs → WeChat CDN
+                              · Obsidian ![[WikiLinks]] → resolved
+                                      ↓
+                              [Cover Generator]
+                              · Pillow-based branded PNG
+                              · title + accent color from style
+                                      ↓
+                              [WeChat API Client]
+                              · upload media → create draft
+                              · auto-retry with exponential backoff
+```
 
 ### Quick Start
 
@@ -34,32 +60,45 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 ```
 
+### Features
+
+| Category | Capability |
+|----------|-----------|
+| **Rendering** | AST-powered via `mistune` 3.x — nested lists, tables, code blocks, footnotes |
+| **Styles** | 3 core classics + 7 extended + unlimited custom styles via URL replication |
+| **Images** | Local files, external URLs, Obsidian WikiLinks — auto-uploaded to WeChat CDN |
+| **Covers** | Auto-generated branded PNG from title + style (Pillow) |
+| **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
+| **Video** | YouTube/Bilibili links → clean text links, not broken images |
+| **Credentials** | Project `.env` → global config → env vars (multi-level priority) |
+| **Preview** | `--dry-run` generates HTML locally, zero API calls |
+
 ### Styles
 
 ```bash
-# List all styles with descriptions
+# List all available styles
 .venv/bin/python3 scripts/styles.py --list
 ```
 
-**Core (recommended):**
+**Core Classics — recommended starting points:**
 
-| Style | Description |
-|-------|-------------|
-| `swiss` | Swiss International. White + red, grid-driven, professional. Technical articles, reports. |
-| `editorial` | Magazine editorial. Warm cream, serif, wide spacing. Opinion pieces, analysis. |
-| `ink` | Eastern ink. Warm white, crimson accent, max line-height. Humanities, deep writing. |
+| Style | Aesthetic | Best For |
+|-------|-----------|----------|
+| `swiss` | White + red, grid-driven, Müller-Brockmann precision | Tech articles, reports, announcements |
+| `editorial` | Warm cream, serif, NYT/New Yorker print heritage | Opinion pieces, analysis, essays |
+| `ink` | Warm white, crimson accent, Chinese calligraphy meets digital | Humanities, culture, literary writing |
 
-**Extend (7 more):** `notebook`, `geometry`, `botanical`, `terminal`, `bold`, `cyber`, `voltage`
+**Extended:** `notebook` · `geometry` · `botanical` · `terminal` · `bold` · `cyber` · `voltage`
 
-**Custom:** Analyze any WeChat article and replicate its style:
+**Custom Style Replication:**
 ```bash
-# Create custom style from article
+# Analyze any WeChat article and replicate its visual style
 .venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --no-verify-ssl
 
-# Rename
+# Rename custom style
 .venv/bin/python3 scripts/styles.py --rename custom-old custom-new
 
-# Use it
+# Publish with custom style
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style custom-kimi
 ```
 
@@ -68,6 +107,7 @@ Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as J
 ### Command Reference
 
 ```bash
+# Publish
 .venv/bin/python3 scripts/wechat_publisher.py \
   --md article.md \          # Markdown file (required)
   --style swiss \            # Style preset (default: swiss)
@@ -76,9 +116,8 @@ Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as J
   --no-verify-ssl \          # Disable SSL verification
   --dry-run --out-html /tmp/preview.html \  # Local preview
   -v                         # Verbose logging
-```
 
-```bash
+# Style management
 .venv/bin/python3 scripts/styles.py \
   --list \                   # List all styles
   --url <wechat-url> \       # Analyze article and create custom style
@@ -86,6 +125,9 @@ Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as J
   --rename OLD NEW \         # Rename custom style
   --name custom-xxx \        # Specify style name
   --dry-run                  # Analyze only, don't save
+
+# Clear all drafts
+.venv/bin/python3 scripts/clear_drafts.py
 ```
 
 ### Credentials
@@ -102,12 +144,6 @@ mkdir -p ~/.config/publish-md-to-wechat
 echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
 ```
 
-### Caching
-
-Token and image caches stored at:
-- macOS: `~/Library/Caches/publish-md-to-wechat/`
-- Linux: `~/.cache/publish-md-to-wechat/`
-
 ### Error Reference
 
 | Error | Cause | Fix |
@@ -123,18 +159,33 @@ Token and image caches stored at:
 <a name="中文"></a>
 ## 中文
 
-将 Markdown 文章发布到微信公众号草稿箱，支持专业视觉样式、自动图片处理和封面生成。
+### 核心问题
+
+微信公众号覆盖 **2300 万+ 发布者**，却共享同一个痛点：自带编辑器毁格式、手动传图片、每篇文章千篇一律。
+
+**publish-md-to-wechat** 是开源的命令行工具：用 Markdown 写作，一行命令发布，文章带着精美样式、上传好的图片、生成好的封面，直接进入草稿箱。
+
+### 为什么重要
+
+| 指标 | 价值 |
+|------|------|
+| **2300万+ 公众号** | 每一个都需要更好的发布流程 |
+| **每篇节省 30+ 分钟** | 手工排版 → 一行命令 |
+| **11 种专业样式** | 品牌一致性，零设计门槛 |
+| **零锁定** | MIT 开源，Markdown 永远是你的 |
 
 ### 功能
 
 - **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块）
-- **11 种视觉样式** — 3 核心 + 7 扩展 + 无限自定义
+- **11 种视觉样式** — 3 经典核心 + 7 扩展 + 无限自定义
 - **样式复刻** — 分析任意微信文章 URL，提取视觉风格，保存为可复用预设
 - **Obsidian 兼容** — 原生支持 `![[WikiLink]]` 图片语法
 - **智能图片上传** — 本地图片、外部 URL 自动上传微信 CDN
 - **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
 - **YAML Frontmatter** — 自动提取标题、作者、摘要
-- **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接，不会当图片处理
+- **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接
+- **凭证管理** — 项目级、全局级或环境变量级凭证解析
+- **本地预览** — `--dry-run` 模式生成 HTML 预览，不调用任何 API
 
 ### 快速开始
 
@@ -150,28 +201,29 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 ```
 
-### 样式管理
+### 样式
 
+**核心经典（推荐）：**
+
+| 样式 | 美学 | 适用场景 |
+|------|------|----------|
+| `swiss` | 白底红色，网格精确 | 技术文章、报告、公告 |
+| `editorial` | 暖米色，衬线字体 | 评论、分析、个人品牌 |
+| `ink` | 暖白底，深红强调 | 人文、文化、深度写作 |
+
+**扩展样式：** `notebook` · `geometry` · `botanical` · `terminal` · `bold` · `cyber` · `voltage`
+
+**样式复刻：**
 ```bash
-# 查看所有样式
-.venv/bin/python3 scripts/styles.py --list
-
 # 从微信文章复刻样式
 .venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --no-verify-ssl
 
 # 重命名
 .venv/bin/python3 scripts/styles.py --rename custom-old custom-new
+
+# 使用
+.venv/bin/python3 scripts/wechat_publisher.py --md article.md --style custom-kimi
 ```
-
-**核心样式（推荐）：**
-
-| 样式 | 说明 |
-|------|------|
-| `swiss` | 瑞士国际主义。白底红色，网格感强。适合技术文章、产品更新。 |
-| `editorial` | 杂志编辑。暖米色，衬线字体。适合观点文章、深度分析。 |
-| `ink` | 东方水墨。暖白底，深红强调。适合人文历史、深度长文。 |
-
-**扩展样式（7 种）：** `notebook`、`geometry`、`botanical`、`terminal`、`bold`、`cyber`、`voltage`
 
 自定义样式存储在 `~/.config/publish-md-to-wechat/custom-styles/`。
 
@@ -185,9 +237,32 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 |--------|------|----------|
 | `40164` | IP 未在白名单 | 在微信后台添加 IP |
 | `40125` / `40013` | 凭证错误 | 检查 `.env` |
+| `45009` | 频率限制 | 等待后重试 |
 | `45110` | 作者字段超限 | v0.6.0 已自动截断 |
 | SSL 错误 | 企业代理 | 添加 `--no-verify-ssl` |
 
 ---
 
-*Developed by **Air7.fun** · Open-source under MIT*
+## Roadmap
+
+| Feature | Status |
+|---------|--------|
+| Core publishing pipeline (AST render + image upload + draft) | ✅ Shipped |
+| 10 built-in style presets | ✅ Shipped |
+| Auto cover generation (Pillow) | ✅ Shipped |
+| Custom style replication from any WeChat article | ✅ Shipped |
+| Obsidian WikiLink support | ✅ Shipped |
+| YAML frontmatter auto-extraction | ✅ Shipped |
+| Style quality refinement (classic trio polish) | 🚧 In Progress |
+| Parallel image upload | 📋 Planned |
+| Template system for recurring formats | 📋 Planned |
+| Web UI for non-technical users | 📋 Planned |
+| Team collaboration & shared style libraries | 📋 Planned |
+
+## License
+
+[MIT](LICENSE) — free to use, modify, and distribute.
+
+---
+
+*Built by [Air7.fun](https://air7.fun) · Open Source*
