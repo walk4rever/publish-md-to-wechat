@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 import urllib.request
 import urllib.error
@@ -128,6 +128,155 @@ def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
 # WeChat HTML Renderer (AST-based)
 # ============================================================
 
+def _detect_ascii_table(code: str):
+    """Detect pipe-delimited ASCII tables inside a code block.
+
+    Returns a list of "segments" where each segment is either:
+      ("text", str)  — non-table lines (kept as code)
+      ("table", list[list[str]])  — parsed rows, first row is header
+
+    Detection heuristic:
+      - A "table line" has at least 2 pipe characters '|' used as column separators.
+      - A "separator line" is made of pipes, dashes, equals, plus, colons, spaces
+        (e.g.  ---|--- or ===|=== or -+-+-).
+      - A table is a consecutive run of ≥3 lines where every line is either a
+        table-line or a separator-line, and at least one separator exists.
+      - Box-drawing characters (┌┬┐├┼┤└┴┘│─═) are also recognized: lines
+        containing them are treated as separator/border lines and skipped, while
+        lines with │ as separator are parsed as data rows.
+    """
+    # Box-drawing border: must contain at least one actual Unicode box char (─┌┐ etc),
+    # not just ASCII pipes/dashes which are plain-text table separators.
+    _BOX_CHARS = r'┌┬┐├┼┤└┴┘─═┅┄╌╍┈┉╔╗╚╝╠╬╣╦╩║╒╓╕╖╘╙╛╜╞╡╤╧╟╢╥╨'
+    BOX_BORDER = re.compile(r'^[\s' + _BOX_CHARS + r'+\-=|:]+$')
+    BOX_UNICODE = re.compile(r'[' + _BOX_CHARS + r']')
+    BOX_DATA = re.compile(r'│')
+
+    lines = code.split('\n')
+    # Strip trailing empty lines
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    def _is_pipe_line(line):
+        """Line uses ASCII pipe '|' as column separator (≥2 pipes)."""
+        return line.count('|') >= 2
+
+    def _is_separator(line):
+        """Separator row: only dashes, pipes, plus, equals, colons, spaces."""
+        stripped = line.strip()
+        if not stripped:
+            return False
+        return bool(re.match(r'^[\s|+\-=:]+$', stripped)) and ('--' in stripped or '==' in stripped)
+
+    def _is_box_border(line):
+        """Box-drawing border line (┌──┬──┐ etc). Must contain Unicode box chars."""
+        stripped = line.strip()
+        return (bool(stripped) and bool(BOX_BORDER.match(stripped))
+                and bool(BOX_UNICODE.search(stripped)) and not BOX_DATA.search(line))
+
+    def _is_box_data(line):
+        """Box-drawing data line (│ cell │ cell │)."""
+        return bool(BOX_DATA.search(line))
+
+    def _parse_pipe_row(line):
+        """Split a pipe-delimited row into cell texts."""
+        # Remove leading/trailing pipe if present
+        stripped = line.strip()
+        if stripped.startswith('|'):
+            stripped = stripped[1:]
+        if stripped.endswith('|'):
+            stripped = stripped[:-1]
+        return [cell.strip() for cell in stripped.split('|')]
+
+    def _parse_box_row(line):
+        """Split a box-drawing data row (│ cell │ cell │) into cell texts."""
+        stripped = line.strip()
+        if stripped.startswith('│'):
+            stripped = stripped[1:]
+        if stripped.endswith('│'):
+            stripped = stripped[:-1]
+        return [cell.strip() for cell in stripped.split('│')]
+
+    # --- Scan for table regions ---
+    segments = []
+    i = 0
+
+    while i < len(lines):
+        # Try to match a box-drawing table starting at line i
+        if _is_box_border(lines[i]) or _is_box_data(lines[i]):
+            j = i
+            data_rows = []
+            has_border = False
+            while j < len(lines):
+                if _is_box_border(lines[j]):
+                    has_border = True
+                    j += 1
+                elif _is_box_data(lines[j]):
+                    data_rows.append(_parse_box_row(lines[j]))
+                    j += 1
+                else:
+                    break
+            if has_border and len(data_rows) >= 2:
+                segments.append(("table", data_rows))
+                i = j
+                continue
+
+        # Try to match a pipe-delimited table starting at line i
+        if _is_pipe_line(lines[i]) or _is_separator(lines[i]):
+            j = i
+            run_lines = []
+            has_sep = False
+            while j < len(lines):
+                if _is_separator(lines[j]):
+                    # Check separator BEFORE pipe-line: separators also contain '|'
+                    has_sep = True
+                    run_lines.append(("sep", lines[j]))
+                    j += 1
+                elif _is_pipe_line(lines[j]):
+                    run_lines.append(("data", lines[j]))
+                    j += 1
+                elif not lines[j].strip():
+                    # Allow one blank line inside a table block (gap between sub-tables)
+                    # but only if the next non-blank is still table-like
+                    peek = j + 1
+                    while peek < len(lines) and not lines[peek].strip():
+                        peek += 1
+                    if peek < len(lines) and (_is_pipe_line(lines[peek]) or _is_separator(lines[peek])):
+                        run_lines.append(("blank", lines[j]))
+                        j += 1
+                    else:
+                        break
+                else:
+                    break
+            data_count = sum(1 for t, _ in run_lines if t == "data")
+            if has_sep and data_count >= 2:
+                # Split into sub-tables on blank lines
+                current_rows = []
+                for kind, content in run_lines:
+                    if kind == "data":
+                        current_rows.append(_parse_pipe_row(content))
+                    elif kind == "blank" and current_rows:
+                        segments.append(("table", current_rows))
+                        current_rows = []
+                if current_rows:
+                    segments.append(("table", current_rows))
+                i = j
+                continue
+
+        # Not a table line — collect as text
+        text_start = i
+        i += 1
+        while i < len(lines):
+            if _is_pipe_line(lines[i]) or _is_separator(lines[i]) or _is_box_border(lines[i]) or _is_box_data(lines[i]):
+                break
+            i += 1
+        segments.append(("text", '\n'.join(lines[text_start:i])))
+
+    # Only return segments if at least one table was found
+    has_table = any(kind == "table" for kind, _ in segments)
+    return segments if has_table else None
+
+
 class WeChatRenderer(mistune.HTMLRenderer):
     """Custom renderer for WeChat compatible HTML with inline styles."""
     
@@ -176,22 +325,73 @@ class WeChatRenderer(mistune.HTMLRenderer):
         s = self.style
         if self.style_name == "swiss":
             return (f'<section style="margin: 25px 0; padding: 20px; background-color: #f9f9f9; '
-                    f'border-left: 5px solid {s["accent"]}; color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">'
+                    f'border-left: 3px solid {s["accent"]}; color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">'
                     f'{text}</section>\n')
-        
+
+        # ink: subtle 2px line for understated elegance
+        # editorial: refined 3px line for magazine feel
+        # others: default 4px
+        border_w = "2px" if self.style_name == "ink" else "3px" if self.style_name == "editorial" else "4px"
         bg = "#f9f9f9" if s["bg"] == "#ffffff" else "rgba(255,255,255,0.05)"
         border_color = s["accent"]
         return (f'<section style="margin: 30px 0; padding: 25px; border: 1px solid #eeeeee; '
-                f'background-color: {bg}; border-left: 6px solid {border_color}; border-radius: 4px;">'
+                f'background-color: {bg}; border-left: {border_w} solid {border_color}; border-radius: 4px;">'
                 f'<section style="color: {s["text"]}; font-size: 15px; line-height: 1.8; '
                 f'font-style: italic; opacity: 0.9;">{text}</section></section>\n')
 
-    def block_code(self, code, info=None):
+    def _render_ascii_table_as_html(self, rows):
+        """Render parsed ASCII table rows as a styled HTML <table>.
+
+        Reuses the same visual style as the native Markdown table renderer so
+        that auto-converted tables look identical to hand-written ones.
+        """
         s = self.style
-        # Escape HTML then replace newlines with <br> for reliable WeChat mobile rendering
+        border_color = "#dddddd" if self.style_name == "swiss" else s["text"]
+        border = "#dddddd" if self.style_name == "swiss" else s["secondary"]
+
+        # Normalize column count (pad short rows)
+        max_cols = max(len(r) for r in rows)
+        for r in rows:
+            while len(r) < max_cols:
+                r.append("")
+
+        def _esc(t):
+            return t.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+        # First row is header
+        header = rows[0]
+        body = rows[1:]
+
+        # Header bg/color — matches table_cell(head=True) logic
+        hdr_bg = "#f2f2f2"
+        hdr_color = "#1a1a1a"
+
+        thead = '<tr style="border-bottom: 1px solid #eeeeee;">'
+        for cell in header:
+            thead += (f'<th style="border: 1px solid {border}; padding: 12px 10px; text-align: left; '
+                      f'background-color: {hdr_bg}; color: {hdr_color}; font-weight: bold;">'
+                      f'{_esc(cell)}</th>')
+        thead += '</tr>'
+
+        tbody_rows = ''
+        for row in body:
+            tbody_rows += '<tr style="border-bottom: 1px solid #eeeeee;">'
+            for cell in row:
+                tbody_rows += (f'<td style="border: 1px solid {border}; padding: 10px; '
+                               f'text-align: left; color: {s["text"]};">{_esc(cell)}</td>')
+            tbody_rows += '</tr>\n'
+
+        return (f'<section style="margin: 25px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">'
+                f'<table style="border-collapse: collapse; width: 100%; border: 1px solid {border_color}; '
+                f'background-color: {s["bg"]}; font-size: 14px;">'
+                f'<thead>{thead}</thead>\n<tbody>{tbody_rows}</tbody>'
+                f'</table></section>\n')
+
+    def _render_code_block(self, code):
+        """Render a plain code block (no table detection)."""
+        s = self.style
         def _escape(c):
             return c.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
-        # Simplified code block for swiss
         if self.style_name == "swiss":
             escaped_code = _escape(code)
             return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f6f6f6; '
@@ -207,14 +407,43 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 14px; line-height: 1.5; '
                 f'color: {s["text"]}; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
+    def block_code(self, code, info=None):
+        # If the code block has a language hint (e.g. ```python), skip table detection —
+        # it's real code, not an ASCII table.
+        if info and info.strip() not in ('', 'text', 'txt', 'plain'):
+            return self._render_code_block(code)
+
+        # Detect ASCII pipe/box-drawing tables in fenced code blocks
+        segments = _detect_ascii_table(code)
+        if segments is None:
+            return self._render_code_block(code)
+
+        # Render mixed content: tables as <table>, remaining text as <pre>
+        html_parts = []
+        for kind, data in segments:
+            if kind == "table":
+                html_parts.append(self._render_ascii_table_as_html(data))
+            else:
+                text = data.strip()
+                if text:
+                    html_parts.append(self._render_code_block(text))
+        return '\n'.join(html_parts)
+
     def list(self, text, ordered, **kwargs):
         margin = "16px 0" if self.style_name == "swiss" else "15px 0"
         return f'<section style="margin: {margin};">{text}</section>\n'
 
     def list_item(self, text, **kwargs):
         s = self.style
-        bullet = "•" if self.style_name == "swiss" else "■"
-        bullet_size = "18px"
+        # Core styles: smaller, refined bullets; extend styles: moderate default
+        if self.style_name == "swiss":
+            bullet, bullet_size = "•", "14px"
+        elif self.style_name == "editorial":
+            bullet, bullet_size = "■", "12px"
+        elif self.style_name == "ink":
+            bullet, bullet_size = "■", "10px"
+        else:
+            bullet, bullet_size = "■", "14px"
         margin_right = "8px"
         
         return (f'<section style="margin: 8px 0; display: flex; align-items: flex-start;">'
