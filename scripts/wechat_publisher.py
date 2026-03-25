@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 import urllib.request
 import urllib.error
@@ -408,6 +408,15 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 f'color: {s["text"]}; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
     def block_code(self, code, info=None):
+        # Render Mermaid diagrams as images via mermaid.ink
+        if info and info.strip() == "mermaid":
+            import base64
+            encoded = base64.urlsafe_b64encode(code.encode()).decode()
+            img_url = f"https://mermaid.ink/img/{encoded}"
+            return (f'<section style="text-align: center; margin: 20px 0;">'
+                    f'<img src="{img_url}" alt="Diagram" '
+                    f'style="max-width: 100%; height: auto;" /></section>\n')
+
         # If the code block has a language hint (e.g. ```python), skip table detection —
         # it's real code, not an ASCII table.
         if info and info.strip() not in ('', 'text', 'txt', 'plain'):
