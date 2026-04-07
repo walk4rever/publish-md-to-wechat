@@ -324,8 +324,9 @@ class WeChatRenderer(mistune.HTMLRenderer):
     def block_quote(self, text):
         s = self.style
         if self.style_name == "swiss":
-            return (f'<section style="margin: 25px 0; padding: 20px; background-color: #f9f9f9; '
-                    f'border-left: 3px solid {s["accent"]}; color: {s["secondary"]}; font-size: 15px; line-height: 1.6;">'
+            return (f'<section style="margin: 25px 0; padding: 16px 20px; background-color: #f5f5f5; '
+                    f'border-left: 3px solid #bbbbbb; color: {s["secondary"]}; font-size: 15px; line-height: 1.7; '
+                    f'font-style: italic;">'
                     f'{text}</section>\n')
 
         # ink: subtle 2px line for understated elegance
@@ -394,9 +395,11 @@ class WeChatRenderer(mistune.HTMLRenderer):
             return c.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
         if self.style_name == "swiss":
             escaped_code = _escape(code)
-            return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f6f6f6; '
-                    f'border-radius: 4px; overflow-x: auto; border: 1px solid #eeeeee;">'
-                    f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 13px; line-height: 1.5; '
+            return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f0f0f0; '
+                    f'border-radius: 0; overflow-x: auto; border-left: 3px solid #dddddd; border-top: none; '
+                    f'border-right: none; border-bottom: none;">'
+                    f'<pre style="margin: 0; font-family: \'JetBrains Mono\', Menlo, Monaco, Consolas, monospace; '
+                    f'font-size: 13px; line-height: 1.5; '
                     f'color: #333333; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
         bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
