@@ -157,7 +157,7 @@ def _parse_tts_frame(data: bytes) -> dict:
 
     elif message_type == 0x0F:
         # Error response
-        payload = data[header_size + 4:]
+        payload = data[header_size + 8:]
         if compression == 1:
             payload = gzip.decompress(payload)
         try:
