@@ -30,8 +30,17 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
+# Install Playwright browser runtime (required for video slide capture)
+if [ "${SKIP_PLAYWRIGHT_INSTALL:-0}" = "1" ]; then
+    echo "⏭️  SKIP_PLAYWRIGHT_INSTALL=1, skipping Chromium install."
+else
+    echo "🎬 Installing Playwright Chromium runtime..."
+    python3 -m playwright install chromium
+fi
+
 # Success
 echo "=================================================="
 echo "✨ Setup complete!"
-echo "💡 Usage: source .venv/bin/activate && python3 scripts/wechat_publisher.py ..."
+echo "💡 Article publish: source .venv/bin/activate && python3 scripts/wechat_publisher.py ..."
+echo "💡 Video export:   source .venv/bin/activate && python3 scripts/video_publisher.py --md article.md --no-tts"
 echo "=================================================="

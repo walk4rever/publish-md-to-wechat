@@ -58,6 +58,9 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 
 # 3. Preview (no API calls)
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
+
+# 4. Generate vertical video (1080x1920)
+.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts
 ```
 
 ### Features
@@ -69,7 +72,8 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 | **Images** | Local files, external URLs, Obsidian WikiLinks — auto-uploaded to WeChat CDN |
 | **Covers** | Auto-generated branded PNG from title + style (Pillow) |
 | **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
-| **Video** | YouTube/Bilibili links → clean text links, not broken images |
+| **Video links (article mode)** | YouTube/Bilibili links → clean text links, not broken images |
+| **Video export (new)** | Markdown → vertical slides → screenshots → narration (Volcengine TTS) → MP4 |
 | **Credentials** | Project `.env` → global config → env vars (multi-level priority) |
 | **Preview** | `--dry-run` generates HTML locally, zero API calls |
 
@@ -103,6 +107,26 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 ```
 
 Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as JSON files with `custom-` prefix.
+
+### Video Generation (WeChat 视频号)
+
+```bash
+# Slides preview only
+.venv/bin/python3 scripts/video_publisher.py --md article.md --dry-run --out-html /tmp/slides.html
+
+# Export MP4 without narration
+.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts --out article.mp4
+
+# Export MP4 with Volcengine narration
+export VOLCANO_TTS_APPID=xxx
+export VOLCANO_TTS_ACCESS_TOKEN=xxx
+.venv/bin/python3 scripts/video_publisher.py --md article.md --style ink --voice zh_female_qingxin_moon_bigtts --out article.mp4
+```
+
+**Video dependencies:**
+- `ffmpeg` (system package)
+- `playwright` + Chromium runtime
+- `websocket-client` (only when using TTS)
 
 ### Command Reference
 
@@ -184,6 +208,7 @@ echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
 - **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
 - **YAML Frontmatter** — 自动提取标题、作者、摘要
 - **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接
+- **视频生成（新）** — Markdown 自动生成竖屏 MP4（切片、截图、配音、合成）
 - **凭证管理** — 项目级、全局级或环境变量级凭证解析
 - **本地预览** — `--dry-run` 模式生成 HTML 预览，不调用任何 API
 
@@ -199,6 +224,9 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 
 # 3. 本地预览（不调用 API）
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
+
+# 4. 生成竖屏视频（1080x1920）
+.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts
 ```
 
 ### 样式

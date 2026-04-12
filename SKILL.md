@@ -90,6 +90,24 @@ description: Short summary for WeChat article list.
 
 ---
 
+## Phase 4B: Generate WeChat Video (视频号)
+
+```bash
+# 仅生成幻灯片预览
+.venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --dry-run --out-html /tmp/slides.html
+
+# 导出 MP4（无配音）
+.venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --no-tts --out [OUTPUT.mp4]
+
+# 导出 MP4（Volcengine 配音）
+VOLCANO_TTS_APPID=xxx VOLCANO_TTS_ACCESS_TOKEN=xxx \
+.venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --voice zh_female_qingxin_moon_bigtts
+```
+
+依赖：`ffmpeg`、`playwright + chromium`，使用配音时额外需要 `websocket-client`。
+
+---
+
 ## Phase 5: Success Output
 
 ```
