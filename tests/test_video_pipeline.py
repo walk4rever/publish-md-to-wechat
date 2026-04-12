@@ -69,8 +69,11 @@ class TestVolcengineFrameParser(unittest.TestCase):
         header = bytes([0x11, 0xF0, 0x11, 0x00])  # message_type=0x0F (error)
         error_obj = {"code": 123, "message": "bad request"}
         payload = gzip.compress(json.dumps(error_obj).encode("utf-8"))
+        # Current parser expects error frames as:
+        # [header][error_code(int32)][payload_size(uint32)][payload]
+        error_code = struct.pack(">i", error_obj["code"])
         payload_size = struct.pack(">I", len(payload))
-        frame = header + payload_size + payload
+        frame = header + error_code + payload_size + payload
 
         parsed = _parse_tts_frame(frame)
         self.assertIsNotNone(parsed["error"])

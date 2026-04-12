@@ -25,30 +25,14 @@ _FADE_DURATION = 0.5
 
 
 def _resolve_ffmpeg_bin() -> str:
-    """Resolve ffmpeg binary path from PATH, imageio-ffmpeg, or Playwright cache."""
+    """Resolve ffmpeg binary path from PATH only."""
     ffmpeg_bin = shutil.which("ffmpeg")
     if ffmpeg_bin:
         return ffmpeg_bin
 
-    try:
-        import imageio_ffmpeg
-        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        if ffmpeg_bin and os.path.exists(ffmpeg_bin) and os.access(ffmpeg_bin, os.X_OK):
-            return ffmpeg_bin
-    except Exception:
-        pass
-
-    candidates = [
-        os.path.expanduser("~/Library/Caches/ms-playwright/ffmpeg-1011/ffmpeg-mac"),
-    ]
-    for path in candidates:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            return path
-
     raise RuntimeError(
         "ffmpeg is required but not found.\n"
-        "Install: brew install ffmpeg (macOS) or apt install ffmpeg (Linux), "
-        "or pip install imageio-ffmpeg"
+        "Install: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
     )
 
 

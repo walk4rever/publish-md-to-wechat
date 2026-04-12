@@ -68,21 +68,7 @@ def _ensure_runtime_dependencies(enable_tts: bool) -> None:
             "Install: pip install playwright && python -m playwright install chromium"
         )
 
-    ffmpeg_ok = _shutil.which("ffmpeg") is not None
-    if not ffmpeg_ok:
-        try:
-            import imageio_ffmpeg
-            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-            ffmpeg_ok = bool(ffmpeg_bin and os.path.exists(ffmpeg_bin) and os.access(ffmpeg_bin, os.X_OK))
-        except Exception:
-            ffmpeg_ok = False
-
-    if not ffmpeg_ok:
-        # Fallback: Playwright ships a minimal ffmpeg binary.
-        pw_ffmpeg = os.path.expanduser("~/Library/Caches/ms-playwright/ffmpeg-1011/ffmpeg-mac")
-        ffmpeg_ok = os.path.exists(pw_ffmpeg) and os.access(pw_ffmpeg, os.X_OK)
-
-    if not ffmpeg_ok:
+    if _shutil.which("ffmpeg") is None:
         raise ImportError(
             "ffmpeg is required for video composition.\n"
             "Install: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
