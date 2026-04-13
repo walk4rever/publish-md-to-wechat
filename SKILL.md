@@ -94,40 +94,40 @@ description: Short summary for WeChat article list.
 
 By default, ALWAYS generate video WITH TTS voice unless explicitly told not to.
 Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file, or load them from the environment.
-`--duration` / `--tone` / `--audience` are REQUIRED for video generation.
+
+**Important:** Before generating the video, you MUST ask the user for the following preferences if they haven't provided them:
+1. **Target Duration** (e.g., 30s, 60s, 90s)
+2. **Narration Tone** (e.g., 专业克制, 轻松幽默, 热情洋溢)
+3. **Target Audience** (e.g., AI开发者, 产品经理, 大众)
+4. **Visual Style** (e.g., swiss, ink, minimal)
+5. **TTS Voice** (Optional, default to `zh_male_m191_uranus_bigtts` or let user pick)
+
+**Step 1: Agent Plans Outline and Narration (DO NOT use python scripts for LLM calls)**
+Read the Markdown file. Act as an expert presentation editor. You (the Agent) MUST natively generate the `tmp/slides.md` (Slidev format) and `tmp/narration.json` based on the user's requested duration, tone, audience, and style.
+
+- `tmp/slides.md` must be valid Slidev markdown. Use `theme: seriph` for `swiss`, `default` for others. Add `aspectRatio: 9/16` and `canvasWidth: 1080`.
+- `tmp/narration.json` must align with the scenes in the slides.
+  ```json
+  {
+    "scenes": [
+      { "title": "Title", "narration": "大家好...", "scene_type": "title" },
+      { "title": "Point 1", "narration": "第一点...", "scene_type": "content" }
+    ]
+  }
+  ```
+
+**Step 2: Render and Compose**
+Use the script to export slides, synthesize TTS, and compose the final MP4.
 
 ```bash
-# 导出 MP4（默认：带配音）
+# 导出 MP4
 .venv/bin/python3 scripts/video_publisher.py \
-  --md [PATH] \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 60 \
   --style [STYLE] \
-  --tone "专业克制" \
-  --audience "目标受众" \
   --voice zh_male_m191_uranus_bigtts \
-  --out [OUTPUT.mp4]
-```
-
-```bash
-# 仅生成规划产物（slides.md + narration.json）
-.venv/bin/python3 scripts/video_publisher.py \
-  --md [PATH] \
-  --duration 60 \
-  --style [STYLE] \
-  --tone "专业克制" \
-  --audience "目标受众" \
-  --dry-run
-```
-
-```bash
-# 导出 MP4（无配音 - 仅在用户明确要求时使用）
-.venv/bin/python3 scripts/video_publisher.py \
-  --md [PATH] \
-  --duration 60 \
-  --style [STYLE] \
-  --tone "专业克制" \
-  --audience "目标受众" \
-  --no-tts \
+  --no-verify-ssl \
   --out [OUTPUT.mp4]
 ```
 

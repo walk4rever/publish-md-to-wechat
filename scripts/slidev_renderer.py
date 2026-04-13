@@ -52,7 +52,9 @@ def export_slidev_png(
 
     logger.info("Exporting slides with Slidev...")
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        theme_cmd = ["npm", "install", "@slidev/theme-seriph", "@slidev/cli"]
+        subprocess.run(theme_cmd, check=True, cwd=os.path.dirname(slides_md_path), capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=os.getcwd())
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()

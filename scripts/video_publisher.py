@@ -86,11 +86,13 @@ Examples:
         """,
     )
 
-    parser.add_argument("--md", required=True, help="Path to Markdown file")
+    parser.add_argument("--md", help="Path to Markdown file (required if not using --slides/--narration)")
+    parser.add_argument("--slides", help="Path to pre-generated slides.md")
+    parser.add_argument("--narration", help="Path to pre-generated narration.json")
     parser.add_argument("--duration", required=True, type=int, help="Target narration duration in seconds")
-    parser.add_argument("--style", required=True, help="Style keyword for LLM/Slidev (e.g. swiss, ink)")
-    parser.add_argument("--tone", required=True, help="Required narration tone")
-    parser.add_argument("--audience", required=True, help="Required target audience")
+    parser.add_argument("--style", help="Style keyword for LLM/Slidev (e.g. swiss, ink)")
+    parser.add_argument("--tone", help="Required narration tone")
+    parser.add_argument("--audience", help="Required target audience")
 
     parser.add_argument("--out", default=None, help="Output MP4 path (default: <md_name>.mp4)")
     parser.add_argument("--out-slides", default=None, help="Save generated Slidev markdown (.md)")
@@ -110,7 +112,7 @@ Examples:
     args = parser.parse_args()
     setup_logging(args.verbose)
 
-    if not os.path.exists(args.md):
+    if args.md and not os.path.exists(args.md):
         logger.error(f"File not found: {args.md}")
         return 1
 
@@ -123,12 +125,16 @@ Examples:
         return 1
 
     if args.out is None:
-        base = os.path.splitext(os.path.basename(args.md))[0]
-        args.out = os.path.join(os.path.dirname(args.md) or ".", f"{base}.mp4")
+        if args.md:
+            base = os.path.splitext(os.path.basename(args.md))[0]
+            args.out = os.path.join(os.path.dirname(args.md) or ".", f"{base}.mp4")
+        else:
+            args.out = "output.mp4"
 
-    logger.info(f"Reading {args.md}")
-    with open(args.md, "r", encoding="utf-8") as f:
-        md_content = f.read()
+    if args.md:
+        logger.info(f"Reading {args.md}")
+        with open(args.md, "r", encoding="utf-8") as f:
+            md_content = f.read()
 
     tmp_dir = tempfile.mkdtemp(prefix="video_pub_")
     logger.debug(f"Working directory: {tmp_dir}")
@@ -136,43 +142,77 @@ Examples:
     try:
         _ensure_runtime_dependencies(enable_tts=not args.no_tts)
 
-        # Step 1: LLM plan and Slidev markdown generation.
-        from md_splitter import generate_slidev_content
+        if args.slides and args.narration:
+            logger.info("Using pre-generated slides and narration...")
+            slides_path = os.path.join(tmp_dir, "slides.md")
+            shutil.copy(args.slides, slides_path)
+            
+            with open(args.narration, "r", encoding="utf-8") as f:
+                narration_data = json.load(f)
+            
+            class Scene:
+                def __init__(self, narration: str, title: str = "", scene_type: str = "content"):
+                    self.narration = narration
+                    self.title = title
+                    self.scene_type = scene_type
+            
+            scenes = [
+                Scene(
+                    narration=s["narration"],
+                    title=s.get("title", ""),
+                    scene_type=s.get("scene_type", "content")
+                )
+                for s in narration_data.get("scenes", [])
+            ]
+            
+            narration_json_path = os.path.join(tmp_dir, "narration.json")
+            shutil.copy(args.narration, narration_json_path)
 
-        logger.info("Planning slides with LLM...")
-        scenes, slides_md, plan_meta = generate_slidev_content(
-            md_content,
-            style_name=args.style,
-            duration_seconds=args.duration,
-            tone=args.tone,
-            audience=args.audience,
-            provided_title=None,
-        )
-        logger.info(f"Planned {len(scenes)} scenes")
+        else:
+            if not args.md:
+                logger.error("Either --md OR (--slides AND --narration) must be provided")
+                return 1
+            if not args.style or not args.tone or not args.audience:
+                logger.error("--style, --tone, and --audience are required when using --md")
+                return 1
 
-        slides_path = os.path.join(tmp_dir, "slides.md")
-        with open(slides_path, "w", encoding="utf-8") as f:
-            f.write(slides_md)
+            # Step 1: LLM plan and Slidev markdown generation.
+            from md_splitter import generate_slidev_content
 
-        narration_payload = {
-            "meta": plan_meta,
-            "scenes": [
-                {
-                    "index": i,
-                    "scene_type": scene.scene_type,
-                    "title": scene.title,
-                    "narration": scene.narration,
-                }
-                for i, scene in enumerate(scenes)
-            ],
-        }
-        narration_json_path = os.path.join(tmp_dir, "narration.json")
-        _write_json(narration_json_path, narration_payload)
+            logger.info("Planning slides with LLM...")
+            scenes, slides_md, plan_meta = generate_slidev_content(
+                md_content,
+                style_name=args.style,
+                duration_seconds=args.duration,
+                tone=args.tone,
+                audience=args.audience,
+                provided_title=None,
+            )
+            logger.info(f"Planned {len(scenes)} scenes")
 
-        if args.out_slides:
-            with open(args.out_slides, "w", encoding="utf-8") as f:
+            slides_path = os.path.join(tmp_dir, "slides.md")
+            with open(slides_path, "w", encoding="utf-8") as f:
                 f.write(slides_md)
-            logger.info(f"Saved generated slides markdown: {args.out_slides}")
+
+            narration_payload = {
+                "meta": plan_meta,
+                "scenes": [
+                    {
+                        "index": i,
+                        "scene_type": scene.scene_type,
+                        "title": scene.title,
+                        "narration": scene.narration,
+                    }
+                    for i, scene in enumerate(scenes)
+                ],
+            }
+            narration_json_path = os.path.join(tmp_dir, "narration.json")
+            _write_json(narration_json_path, narration_payload)
+
+            if args.out_slides:
+                with open(args.out_slides, "w", encoding="utf-8") as f:
+                    f.write(slides_md)
+                logger.info(f"Saved generated slides markdown: {args.out_slides}")
 
         if args.dry_run:
             print("\n" + "=" * 50)
