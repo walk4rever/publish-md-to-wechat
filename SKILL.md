@@ -107,6 +107,20 @@ Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file
 **Step 1: Agent Plans Outline and Narration (DO NOT use python scripts for LLM calls)**
 Read the Markdown file. Act as an expert presentation editor. You (the Agent) MUST natively generate the `tmp/slides.md` (Slidev format) and `tmp/narration.json` based on the user's requested duration, tone, audience, and style.
 
+**CRITICAL: Narration Quality Rules (avoid filler/repetition)**
+- Audience/tone are **global constraints**, not per-scene slogans. Do **not** repeatedly say phrases like `面向AI开发者` / `关键在于` in every scene.
+- Each scene narration must add **new information** (fact, example, contrast, action step), not template padding.
+- Ban empty framing lines: `我们来看看`, `关键在于`, `总的来说` unless they introduce concrete content right after.
+- Keep narration concise and spoken: typically 1-3 short sentences per scene; avoid paragraph-long monologues.
+- Avoid repeating the same sentence pattern across scenes.
+- Prefer concrete wording over abstract buzzwords.
+
+**Narration self-check before writing files:**
+1. Read all scene narrations end-to-end.
+2. If any phrase stem repeats in 3+ scenes (e.g., `面向…`, `关键在…`), rewrite.
+3. Ensure each scene has a unique takeaway in one line.
+4. Remove all non-informational filler.
+
 **CRITICAL: Slidev Formatting for Vertical Video (9:16)**
 Because the output is a mobile vertical video, default Slidev text is too small and pushed to the top. You MUST inject custom CSS and layout directives into `tmp/slides.md` to make it look professional:
 - Add `aspectRatio: 9/16` and `canvasWidth: 1080` to the frontmatter.
