@@ -107,7 +107,15 @@ Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file
 **Step 1: Agent Plans Outline and Narration (DO NOT use python scripts for LLM calls)**
 Read the Markdown file. Act as an expert presentation editor. You (the Agent) MUST natively generate the `tmp/slides.md` (Slidev format) and `tmp/narration.json` based on the user's requested duration, tone, audience, and style.
 
-- `tmp/slides.md` must be valid Slidev markdown. Use `theme: seriph` for `swiss`, `default` for others. Add `aspectRatio: 9/16` and `canvasWidth: 1080`.
+**CRITICAL: Slidev Formatting for Vertical Video (9:16)**
+Because the output is a mobile vertical video, default Slidev text is too small and pushed to the top. You MUST inject custom CSS and layout directives into `tmp/slides.md` to make it look professional:
+- Add `aspectRatio: 9/16` and `canvasWidth: 1080` to the frontmatter.
+- Use `theme: seriph` for `swiss`, `default` for others.
+- Add an appealing Unsplash background to the title slide (e.g., `background: https://images.unsplash.com/photo-...`).
+- Use `layout: center` and `class: text-center` for all slides to center content.
+- Inject a `<style>` block in the title slide to make `h1` very large (e.g., `5rem`), `h2` large (e.g., `3rem`), and optionally add a gradient text effect.
+- Inject `<style>` blocks in content slides to make `li` and `p` large enough to read on mobile (e.g., `2.5rem`, `line-height: 2`).
+
 - `tmp/narration.json` must align with the scenes in the slides.
   ```json
   {
