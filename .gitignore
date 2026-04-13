@@ -39,6 +39,9 @@ venv.bak/
 *.swp
 *.swo
 
+# Node
+node_modules/
+
 # Project specific
 tmp/
 .socket
