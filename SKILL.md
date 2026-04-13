@@ -95,12 +95,14 @@ description: Short summary for WeChat article list.
 By default, ALWAYS generate video WITH TTS voice unless explicitly told not to.
 Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file, or load them from the environment.
 
-**Important:** Before generating the video, you MUST ask the user for the following preferences if they haven't provided them:
+**Important:** Before generating the video, you MUST ask the user for the following preferences if they haven't provided them explicitly in their request:
 1. **Target Duration** (e.g., 30s, 60s, 90s)
 2. **Narration Tone** (e.g., 专业克制, 轻松幽默, 热情洋溢)
 3. **Target Audience** (e.g., AI开发者, 产品经理, 大众)
 4. **Visual Style** (e.g., swiss, ink, minimal)
 5. **TTS Voice** (Optional, default to `zh_male_m191_uranus_bigtts` or let user pick)
+
+**Do not guess or assume these 5 parameters.** If the user simply says "convert to video", you MUST stop and ask them to specify duration, tone, audience, and style first.
 
 **Step 1: Agent Plans Outline and Narration (DO NOT use python scripts for LLM calls)**
 Read the Markdown file. Act as an expert presentation editor. You (the Agent) MUST natively generate the `tmp/slides.md` (Slidev format) and `tmp/narration.json` based on the user's requested duration, tone, audience, and style.
