@@ -2,42 +2,35 @@
 """
 Video Publisher — Markdown to WeChat Video (视频号)
 
-Converts a Markdown article into an MP4 video suitable for WeChat Video Account.
-
 Pipeline:
-  1. Parse MD → split into scenes (md_splitter)
-  2. Render scenes → vertical slide HTML (slide_renderer)
-  3. Capture slides → PNG screenshots (slide_capture / Playwright)
-  4. Synthesize narration → MP3 audio (volcengine_tts)
-  5. Compose video → MP4 (video_composer / ffmpeg)
-
-Usage:
-  python3 scripts/video_publisher.py --md article.md --style swiss --out video.mp4
-  python3 scripts/video_publisher.py --md article.md --style ink --voice zh_male_m191_uranus_bigtts
-  python3 scripts/video_publisher.py --md article.md --dry-run  # Preview slides only
+  1) Read source Markdown
+  2) LLM plans outline + slide content + narration
+  3) Render Slidev markdown and export PNG slides
+  4) Synthesize narration to MP3 (Volcengine TTS)
+  5) Compose final MP4 with ffmpeg
 """
 
-__version__ = "0.1.0"
+from __future__ import annotations
+
+__version__ = "0.2.0"
 
 import argparse
+import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 
 # Ensure scripts/ is on sys.path
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
-from md_splitter import split_md_to_scenes
-from slide_renderer import render_slides_html, available_styles
-
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
-    # Global fallback
     global_env = os.path.expanduser("~/.config/publish-md-to-wechat/.env")
     if os.path.exists(global_env):
         load_dotenv(global_env)
@@ -48,25 +41,21 @@ logger = logging.getLogger("VideoPublisher")
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Configure logging."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
-        format='%(asctime)s | %(name)-16s | %(levelname)-5s | %(message)s',
-        datefmt='%H:%M:%S',
+        format="%(asctime)s | %(name)-16s | %(levelname)-5s | %(message)s",
+        datefmt="%H:%M:%S",
     )
 
 
 def _ensure_runtime_dependencies(enable_tts: bool) -> None:
-    """Fail fast with actionable messages for optional runtime dependencies."""
+    """Fail fast for runtime dependencies."""
     import importlib.util
     import shutil as _shutil
 
-    if importlib.util.find_spec("playwright") is None:
-        raise ImportError(
-            "Playwright is required for video generation.\n"
-            "Install: pip install playwright && python -m playwright install chromium"
-        )
+    if _shutil.which("npx") is None:
+        raise ImportError("npx is required for Slidev export. Install Node.js (includes npm/npx).")
 
     if _shutil.which("ffmpeg") is None:
         raise ImportError(
@@ -81,136 +70,148 @@ def _ensure_runtime_dependencies(enable_tts: bool) -> None:
         )
 
 
+def _write_json(path: str, payload: dict) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Convert Markdown to video for WeChat Video Account (视频号)",
+        description="Convert Markdown to WeChat vertical video via LLM + Slidev",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --md article.md --style swiss
-  %(prog)s --md article.md --style ink --voice zh_female_qingxin_moon_bigtts
-  %(prog)s --md article.md --dry-run --out-html preview.html
-  %(prog)s --md article.md --no-tts  # Skip TTS, images only
+  %(prog)s --md article.md --duration 60 --style swiss --tone 专业克制 --audience AI 产品经理
+  %(prog)s --md article.md --duration 90 --style ink --tone 轻快 --audience 开发者 --no-tts
         """,
     )
 
     parser.add_argument("--md", required=True, help="Path to Markdown file")
-    parser.add_argument("--style", default="swiss",
-                        choices=available_styles(),
-                        help=f"Visual style (default: swiss). Available: {', '.join(available_styles())}")
+    parser.add_argument("--duration", required=True, type=int, help="Target narration duration in seconds")
+    parser.add_argument("--style", required=True, help="Style keyword for LLM/Slidev (e.g. swiss, ink)")
+    parser.add_argument("--tone", required=True, help="Required narration tone")
+    parser.add_argument("--audience", required=True, help="Required target audience")
+
     parser.add_argument("--out", default=None, help="Output MP4 path (default: <md_name>.mp4)")
-    parser.add_argument("--out-html", default=None, help="Save intermediate slides HTML to this path")
-    parser.add_argument("--title", default=None, help="Override article title")
-    parser.add_argument("--author", default=None, help="Author name for title slide")
-
-    # TTS options
-    parser.add_argument("--voice", default=None,
-                        help="Volcengine voice_type (overrides VOLCANO_TTS_VOICE_TYPE env var)")
+    parser.add_argument("--out-slides", default=None, help="Save generated Slidev markdown (.md)")
+    parser.add_argument("--voice", default=None, help="Volcengine voice_type override")
     parser.add_argument("--speed", type=float, default=None, help="TTS speed ratio (default: 1.0)")
-    parser.add_argument("--no-verify-ssl", action="store_true",
-                        help="Disable SSL certificate verification for Volcengine TTS WebSocket")
-    parser.add_argument("--no-tts", action="store_true",
-                        help="Skip TTS — generate video with minimum 2s per slide, no narration")
+    parser.add_argument("--no-verify-ssl", action="store_true", help="Disable SSL verification for TTS WebSocket")
+    parser.add_argument("--no-tts", action="store_true", help="Skip TTS and produce silent per-slide audio placeholders")
 
-    # Video options
     parser.add_argument("--width", type=int, default=1080, help="Video width (default: 1080)")
     parser.add_argument("--height", type=int, default=1920, help="Video height (default: 1920)")
     parser.add_argument("--no-fade", action="store_true", help="Disable fade transitions")
 
-    # Debug options
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Generate slides HTML only, do not capture or render video")
-    parser.add_argument("--keep-temp", action="store_true",
-                        help="Keep intermediate files (slides.html, screenshots, audio) for debugging")
+    parser.add_argument("--dry-run", action="store_true", help="Only generate slides.md + narration plan")
+    parser.add_argument("--keep-temp", action="store_true", help="Keep intermediate files for debugging")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()
     setup_logging(args.verbose)
 
-    # Validate input
     if not os.path.exists(args.md):
         logger.error(f"File not found: {args.md}")
+        return 1
+
+    if args.duration <= 0:
+        logger.error("--duration must be a positive integer")
         return 1
 
     if args.width <= 0 or args.height <= 0:
         logger.error("--width and --height must be positive integers")
         return 1
 
-    # Default output path
     if args.out is None:
         base = os.path.splitext(os.path.basename(args.md))[0]
-        args.out = os.path.join(os.path.dirname(args.md) or '.', f"{base}.mp4")
+        args.out = os.path.join(os.path.dirname(args.md) or ".", f"{base}.mp4")
 
-    # ── Step 1: Parse and split MD ───────────────────────────
     logger.info(f"Reading {args.md}")
-    with open(args.md, 'r', encoding='utf-8') as f:
+    with open(args.md, "r", encoding="utf-8") as f:
         md_content = f.read()
 
-    scenes = split_md_to_scenes(md_content, provided_title=args.title, author=args.author)
-    logger.info(f"Split into {len(scenes)} scenes")
-
-    for i, scene in enumerate(scenes):
-        logger.debug(f"  Scene {i+1} [{scene.scene_type}]: {scene.title[:50]}")
-
-    # ── Step 2: Render slides HTML ───────────────────────────
-    logger.info(f"Rendering slides with style: {args.style}")
-    html = render_slides_html(scenes, args.style)
-
-    if args.out_html:
-        with open(args.out_html, 'w', encoding='utf-8') as f:
-            f.write(html)
-        logger.info(f"Slides HTML saved: {args.out_html}")
-
-    if args.dry_run:
-        # Save HTML and open in browser
-        if not args.out_html:
-            tmp_html = tempfile.NamedTemporaryFile(suffix='.html', delete=False, mode='w')
-            tmp_html.write(html)
-            tmp_html.close()
-            html_path = tmp_html.name
-        else:
-            html_path = args.out_html
-
-        logger.info(f"Dry run — slides preview: {html_path}")
-        _open_file(html_path)
-        print(f"\nDry run complete. {len(scenes)} slides generated.")
-        print(f"Preview: {html_path}")
-        return 0
-
-    # ── Step 3: Capture slide screenshots ────────────────────
     tmp_dir = tempfile.mkdtemp(prefix="video_pub_")
     logger.debug(f"Working directory: {tmp_dir}")
 
     try:
         _ensure_runtime_dependencies(enable_tts=not args.no_tts)
-        # Save HTML to temp file
-        html_path = os.path.join(tmp_dir, "slides.html")
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(html)
 
-        logger.info("Capturing slide screenshots...")
-        from slide_capture import capture_slides
-        image_paths = capture_slides(html_path, os.path.join(tmp_dir, "images"),
-                                     width=args.width, height=args.height)
-        logger.info(f"Captured {len(image_paths)} screenshots")
+        # Step 1: LLM plan and Slidev markdown generation.
+        from md_splitter import generate_slidev_content
 
-        # ── Step 4: TTS synthesis ────────────────────────────
+        logger.info("Planning slides with LLM...")
+        scenes, slides_md, plan_meta = generate_slidev_content(
+            md_content,
+            style_name=args.style,
+            duration_seconds=args.duration,
+            tone=args.tone,
+            audience=args.audience,
+            provided_title=None,
+        )
+        logger.info(f"Planned {len(scenes)} scenes")
+
+        slides_path = os.path.join(tmp_dir, "slides.md")
+        with open(slides_path, "w", encoding="utf-8") as f:
+            f.write(slides_md)
+
+        narration_payload = {
+            "meta": plan_meta,
+            "scenes": [
+                {
+                    "index": i,
+                    "scene_type": scene.scene_type,
+                    "title": scene.title,
+                    "narration": scene.narration,
+                }
+                for i, scene in enumerate(scenes)
+            ],
+        }
+        narration_json_path = os.path.join(tmp_dir, "narration.json")
+        _write_json(narration_json_path, narration_payload)
+
+        if args.out_slides:
+            with open(args.out_slides, "w", encoding="utf-8") as f:
+                f.write(slides_md)
+            logger.info(f"Saved generated slides markdown: {args.out_slides}")
+
+        if args.dry_run:
+            print("\n" + "=" * 50)
+            print("  Dry run completed")
+            print("=" * 50)
+            print(f"  Slides:    {slides_path}")
+            print(f"  Narration: {narration_json_path}")
+            print(f"  Scenes:    {len(scenes)}")
+            print(f"  Model:     {plan_meta.get('model', 'unknown')}")
+            print(f"  Est time:  {plan_meta.get('estimated_duration_seconds', '?')}s")
+            print("=" * 50)
+            return 0
+
+        # Step 2: Slidev export to PNG.
+        from slidev_renderer import export_slidev_png
+
+        logger.info("Exporting PNG slides with Slidev...")
+        image_dir = os.path.join(tmp_dir, "images")
+        image_paths = export_slidev_png(slides_path, image_dir, with_clicks=False)
+        logger.info(f"Exported {len(image_paths)} PNG slides")
+
+        if len(image_paths) != len(scenes):
+            raise RuntimeError(
+                f"Slide count mismatch: {len(image_paths)} images vs {len(scenes)} scenes"
+            )
+
+        # Step 3: TTS audio generation.
         audio_dir = os.path.join(tmp_dir, "audio")
         os.makedirs(audio_dir, exist_ok=True)
 
         if args.no_tts:
-            logger.info("TTS disabled — generating silent audio placeholders")
+            logger.info("TTS disabled — generating silent placeholders")
             audio_paths = []
             for i in range(len(scenes)):
                 silence_path = os.path.join(audio_dir, f"scene_{i:03d}.mp3")
-                # Create empty file — composer will use min duration
-                with open(silence_path, 'wb') as f:
+                with open(silence_path, "wb") as f:
                     pass
                 audio_paths.append(silence_path)
         else:
-            logger.info("Synthesizing narration with Volcengine TTS...")
-
-            # Override voice type if specified
             if args.voice:
                 os.environ["VOLCANO_TTS_VOICE_TYPE"] = args.voice
             if args.speed:
@@ -218,14 +219,17 @@ Examples:
             if args.no_verify_ssl:
                 os.environ["VOLCANO_TTS_VERIFY_SSL"] = "0"
 
+            logger.info("Synthesizing narration with Volcengine TTS...")
             from volcengine_tts import synthesize_scenes
+
             narrations = [scene.narration for scene in scenes]
             audio_paths = synthesize_scenes(narrations, audio_dir)
             logger.info(f"Synthesized {len(audio_paths)} audio files")
 
-        # ── Step 5: Compose video ────────────────────────────
+        # Step 4: Compose final video.
         logger.info("Composing video with ffmpeg...")
         from video_composer import compose_video
+
         compose_video(
             image_paths=image_paths,
             audio_paths=audio_paths,
@@ -235,38 +239,35 @@ Examples:
             height=args.height,
         )
 
-        file_size = os.path.getsize(args.out)
-        file_size_mb = file_size / (1024 * 1024)
-
-        print(f"\n{'='*50}")
-        print(f"  Video generated successfully!")
-        print(f"{'='*50}")
+        file_size_mb = os.path.getsize(args.out) / (1024 * 1024)
+        print("\n" + "=" * 50)
+        print("  Video generated successfully!")
+        print("=" * 50)
         print(f"  Output:   {args.out}")
         print(f"  Size:     {file_size_mb:.1f} MB")
-        print(f"  Slides:   {len(scenes)}")
+        print(f"  Scenes:   {len(scenes)}")
         print(f"  Style:    {args.style}")
-        print(f"  Resolution: {args.width}x{args.height}")
+        print(f"  Tone:     {args.tone}")
+        print(f"  Audience: {args.audience}")
         if not args.no_tts:
-            voice = args.voice or os.environ.get("VOLCANO_TTS_VOICE_TYPE", "default")
-            print(f"  Voice:    {voice}")
+            print(f"  Voice:    {args.voice or os.environ.get('VOLCANO_TTS_VOICE_TYPE', 'default')}")
         if args.keep_temp:
             print(f"  Temp:     {tmp_dir}")
-        print(f"{'='*50}")
-        print(f"\n  Next: Upload to WeChat Video Account (视频号)")
+        print("=" * 50)
 
         _open_file(args.out)
         return 0
 
     except ImportError as e:
         logger.error(str(e))
-        logger.error("Install missing dependencies and retry.")
         return 1
     except Exception as e:
         logger.error(f"Video generation failed: {e}")
         if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            logger.error("SSL verification failed for TTS. Retry with --no-verify-ssl if you are behind a proxy.")
+            logger.error("SSL verification failed for TTS. Retry with --no-verify-ssl if behind a proxy.")
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         return 1
     finally:
@@ -277,8 +278,8 @@ Examples:
 
 
 def _open_file(path: str) -> None:
-    """Open a file with the system default application."""
     import subprocess as sp
+
     try:
         if sys.platform == "darwin":
             sp.run(["open", path], check=False)

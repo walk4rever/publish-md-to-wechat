@@ -59,8 +59,13 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 # 3. Preview (no API calls)
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
-# 4. Generate vertical video (1080x1920)
-.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts
+# 4. Generate vertical video (1080x1920, LLM + Slidev)
+.venv/bin/python3 scripts/video_publisher.py \
+  --md article.md \
+  --duration 60 \
+  --style swiss \
+  --tone "专业克制" \
+  --audience "AI 产品经理"
 ```
 
 ### Features
@@ -73,7 +78,7 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 | **Covers** | Auto-generated branded PNG from title + style (Pillow) |
 | **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
 | **Video links (article mode)** | YouTube/Bilibili links → clean text links, not broken images |
-| **Video export (new)** | Markdown → vertical slides → screenshots → narration (Volcengine TTS) → MP4 |
+| **Video export (new)** | Markdown → LLM planning → Slidev PNG export → narration (Volcengine TTS) → MP4 |
 | **Credentials** | Project `.env` → global config → env vars (multi-level priority) |
 | **Preview** | `--dry-run` generates HTML locally, zero API calls |
 
@@ -111,21 +116,41 @@ Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as J
 ### Video Generation (WeChat 视频号)
 
 ```bash
-# Slides preview only
-.venv/bin/python3 scripts/video_publisher.py --md article.md --dry-run --out-html /tmp/slides.html
+# Dry run: generate slides.md + narration plan only
+.venv/bin/python3 scripts/video_publisher.py \
+  --md article.md \
+  --duration 60 \
+  --style swiss \
+  --tone "专业克制" \
+  --audience "AI 产品经理" \
+  --dry-run
 
 # Export MP4 without narration
-.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts --out article.mp4
+.venv/bin/python3 scripts/video_publisher.py \
+  --md article.md \
+  --duration 60 \
+  --style swiss \
+  --tone "专业克制" \
+  --audience "AI 产品经理" \
+  --no-tts \
+  --out article.mp4
 
 # Export MP4 with Volcengine narration
 export VOLCANO_TTS_APPID=xxx
 export VOLCANO_TTS_ACCESS_TOKEN=xxx
-.venv/bin/python3 scripts/video_publisher.py --md article.md --style ink --voice zh_female_qingxin_moon_bigtts --out article.mp4
+.venv/bin/python3 scripts/video_publisher.py \
+  --md article.md \
+  --duration 90 \
+  --style ink \
+  --tone "轻快有节奏" \
+  --audience "开发者" \
+  --voice zh_female_qingxin_moon_bigtts \
+  --out article.mp4
 ```
 
 **Video dependencies:**
 - `ffmpeg` (system package)
-- `playwright` + Chromium runtime
+- `npx` (Node.js / npm runtime for Slidev CLI)
 - `websocket-client` (only when using TTS)
 
 ### Command Reference
@@ -226,7 +251,12 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
 # 4. 生成竖屏视频（1080x1920）
-.venv/bin/python3 scripts/video_publisher.py --md article.md --style swiss --no-tts
+.venv/bin/python3 scripts/video_publisher.py \
+  --md article.md \
+  --duration 60 \
+  --style swiss \
+  --tone "专业克制" \
+  --audience "AI 产品经理"
 ```
 
 ### 样式

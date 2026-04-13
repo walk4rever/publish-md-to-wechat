@@ -11,13 +11,12 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from md_splitter import split_md_to_scenes
-from slide_renderer import render_slides_html
+from md_splitter import generate_slidev_content
 from volcengine_tts import _parse_tts_frame, load_tts_config
 
 
-class TestMarkdownSplitter(unittest.TestCase):
-    def test_split_adds_title_and_closing_scene(self):
+class TestLLMSlidePlanner(unittest.TestCase):
+    def test_generate_slidev_content_structure(self):
         md = """---
 title: 测试文章
 author: Rafael
@@ -28,35 +27,46 @@ author: Rafael
 
 ## 第二部分
 这是第二段。"""
-        scenes = split_md_to_scenes(md)
-        self.assertGreaterEqual(len(scenes), 4)
+
+        plan = {
+            "outline": ["第一部分", "第二部分"],
+            "slides": [
+                {
+                    "title": "项目概览",
+                    "body_md": "- 目标\n- 核心问题",
+                    "narration": "这部分介绍项目目标和核心问题。",
+                },
+                {
+                    "title": "关键结论",
+                    "body_md": "- 结论一\n- 结论二",
+                    "narration": "这部分给出两个关键结论。",
+                },
+            ],
+        }
+
+        scenes, slides_md, meta = generate_slidev_content(
+            md,
+            style_name="swiss",
+            duration_seconds=60,
+            tone="专业",
+            audience="产品经理",
+            llm_plan_override=plan,
+        )
+
         self.assertEqual(scenes[0].scene_type, "title")
         self.assertEqual(scenes[-1].scene_type, "closing")
-        self.assertIn("测试文章", scenes[0].title)
-
-    def test_long_section_is_split(self):
-        paragraph = "这是一段用于测试切分的文字。" * 20
-        md = f"## 长章节\n\n{paragraph}\n\n{paragraph}"
-        scenes = split_md_to_scenes(md)
-        content_scenes = [s for s in scenes if s.scene_type == "content"]
-        self.assertGreaterEqual(len(content_scenes), 2)
-
-
-class TestSlideRenderer(unittest.TestCase):
-    def test_render_contains_slide_markup(self):
-        md = "# 标题\n\n## 小节\n内容"
-        scenes = split_md_to_scenes(md)
-        html = render_slides_html(scenes, "swiss")
-        self.assertIn("class=\"slide title-slide\"", html)
-        self.assertIn("class=\"slide content-slide\"", html)
-        self.assertIn("class=\"slide closing-slide\"", html)
+        self.assertEqual(len(scenes), 4)
+        self.assertIn("# 测试文章", slides_md)
+        self.assertIn("## 项目概览", slides_md)
+        self.assertIn("## 关键结论", slides_md)
+        self.assertIn("theme: seriph", slides_md)
+        self.assertIn("estimated_duration_seconds", meta)
 
 
 class TestVolcengineFrameParser(unittest.TestCase):
     def test_parse_audio_frame_done(self):
-        # Build a synthetic audio-only frame matching parser assumptions.
-        header = bytes([0x11, 0xB0, 0x11, 0x00])  # v1, message_type=0x0B
-        seq = struct.pack(">i", -1)  # negative => last chunk
+        header = bytes([0x11, 0xB0, 0x11, 0x00])
+        seq = struct.pack(">i", -1)
         reserved = struct.pack(">I", 0)
         payload = b"FAKEAUDIO"
         payload_size = struct.pack(">I", len(payload))
@@ -68,7 +78,7 @@ class TestVolcengineFrameParser(unittest.TestCase):
         self.assertIsNone(parsed["error"])
 
     def test_parse_audio_ack_frame_not_done(self):
-        header = bytes([0x11, 0xB0, 0x11, 0x00])  # v1, message_type=0x0B
+        header = bytes([0x11, 0xB0, 0x11, 0x00])
         seq = struct.pack(">i", 0)
         reserved = struct.pack(">I", 0)
         frame = header + seq + reserved
@@ -79,11 +89,9 @@ class TestVolcengineFrameParser(unittest.TestCase):
         self.assertIsNone(parsed["error"])
 
     def test_parse_error_frame(self):
-        header = bytes([0x11, 0xF0, 0x11, 0x00])  # message_type=0x0F (error)
+        header = bytes([0x11, 0xF0, 0x11, 0x00])
         error_obj = {"code": 123, "message": "bad request"}
         payload = gzip.compress(json.dumps(error_obj).encode("utf-8"))
-        # Current parser expects error frames as:
-        # [header][error_code(int32)][payload_size(uint32)][payload]
         error_code = struct.pack(">i", error_obj["code"])
         payload_size = struct.pack(">I", len(payload))
         frame = header + error_code + payload_size + payload
