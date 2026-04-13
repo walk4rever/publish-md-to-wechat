@@ -59,13 +59,13 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 # 3. Preview (no API calls)
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
-# 4. Generate vertical video (1080x1920, LLM + Slidev)
+# 4. Generate vertical video (1080x1920)
+# First prepare tmp/slides.md + tmp/narration.json via agent/planner
 .venv/bin/python3 scripts/video_publisher.py \
-  --md article.md \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 60 \
-  --style swiss \
-  --tone "专业克制" \
-  --audience "AI 产品经理"
+  --style swiss
 ```
 
 ### Features
@@ -115,35 +115,39 @@ Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as J
 
 ### Video Generation (WeChat 视频号)
 
+> Planning (outline/slides/narration) is handled by the caller/agent first.
+> `video_publisher.py` is execution-only: render Slidev + TTS + compose MP4.
+
 ```bash
-# Dry run: generate slides.md + narration plan only
+# 1) Prepare assets first
+# - tmp/slides.md (Slidev markdown)
+# - tmp/narration.json ({"scenes": [...]})
+
+# 2) Dry run: validate inputs and pipeline setup
 .venv/bin/python3 scripts/video_publisher.py \
-  --md article.md \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 60 \
   --style swiss \
-  --tone "专业克制" \
-  --audience "AI 产品经理" \
   --dry-run
 
-# Export MP4 without narration
+# 3) Export MP4 without narration
 .venv/bin/python3 scripts/video_publisher.py \
-  --md article.md \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 60 \
   --style swiss \
-  --tone "专业克制" \
-  --audience "AI 产品经理" \
   --no-tts \
   --out article.mp4
 
-# Export MP4 with Volcengine narration
+# 4) Export MP4 with Volcengine narration
 export VOLCANO_TTS_APPID=xxx
 export VOLCANO_TTS_ACCESS_TOKEN=xxx
 .venv/bin/python3 scripts/video_publisher.py \
-  --md article.md \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 90 \
   --style ink \
-  --tone "轻快有节奏" \
-  --audience "开发者" \
   --voice zh_female_qingxin_moon_bigtts \
   --out article.mp4
 ```
@@ -251,12 +255,12 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
 # 4. 生成竖屏视频（1080x1920）
+# 先由 agent/planner 生成 tmp/slides.md + tmp/narration.json
 .venv/bin/python3 scripts/video_publisher.py \
-  --md article.md \
+  --slides tmp/slides.md \
+  --narration tmp/narration.json \
   --duration 60 \
-  --style swiss \
-  --tone "专业克制" \
-  --audience "AI 产品经理"
+  --style swiss
 ```
 
 ### 样式

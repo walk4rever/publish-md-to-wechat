@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-Video Publisher — Markdown to WeChat Video (视频号)
+Video Publisher — Slidev + Narration to WeChat Video (视频号)
 
 Pipeline:
-  1) Read source Markdown
-  2) LLM plans outline + slide content + narration
-  3) Render Slidev markdown and export PNG slides
-  4) Synthesize narration to MP3 (Volcengine TTS)
-  5) Compose final MP4 with ffmpeg
+  1) Validate pre-generated Slidev markdown + narration JSON
+  2) Render Slidev markdown and export PNG slides
+  3) Synthesize narration to MP3 (Volcengine TTS)
+  4) Compose final MP4 with ffmpeg
 """
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 import argparse
 import json
@@ -70,32 +69,27 @@ def _ensure_runtime_dependencies(enable_tts: bool) -> None:
         )
 
 
-def _write_json(path: str, payload: dict) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Convert Markdown to WeChat vertical video via LLM + Slidev",
+        description="Render WeChat vertical video from pre-generated Slidev + narration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --md article.md --duration 60 --style swiss --tone 专业克制 --audience AI 产品经理
-  %(prog)s --md article.md --duration 90 --style ink --tone 轻快 --audience 开发者 --no-tts
+  %(prog)s --slides tmp/slides.md --narration tmp/narration.json --duration 60 --style swiss
+  %(prog)s --slides tmp/slides.md --narration tmp/narration.json --duration 90 --no-tts
         """,
     )
 
-    parser.add_argument("--md", help="Path to Markdown file (required if not using --slides/--narration)")
+    parser.add_argument("--md", help="Optional source markdown path (used only for output naming)")
     parser.add_argument("--slides", help="Path to pre-generated slides.md")
     parser.add_argument("--narration", help="Path to pre-generated narration.json")
     parser.add_argument("--duration", required=True, type=int, help="Target narration duration in seconds")
-    parser.add_argument("--style", help="Style keyword for LLM/Slidev (e.g. swiss, ink)")
-    parser.add_argument("--tone", help="Required narration tone")
-    parser.add_argument("--audience", help="Required target audience")
+    parser.add_argument("--style", help="Optional style label for reporting")
+    parser.add_argument("--tone", help="Optional tone label for reporting")
+    parser.add_argument("--audience", help="Optional audience label for reporting")
 
     parser.add_argument("--out", default=None, help="Output MP4 path (default: <md_name>.mp4)")
-    parser.add_argument("--out-slides", default=None, help="Save generated Slidev markdown (.md)")
+    parser.add_argument("--out-slides", default=None, help="Copy input Slidev markdown to a target path")
     parser.add_argument("--voice", default=None, help="Volcengine voice_type override")
     parser.add_argument("--speed", type=float, default=None, help="TTS speed ratio (default: 1.0)")
     parser.add_argument("--no-verify-ssl", action="store_true", help="Disable SSL verification for TTS WebSocket")
@@ -105,7 +99,7 @@ Examples:
     parser.add_argument("--height", type=int, default=1920, help="Video height (default: 1920)")
     parser.add_argument("--no-fade", action="store_true", help="Disable fade transitions")
 
-    parser.add_argument("--dry-run", action="store_true", help="Only generate slides.md + narration plan")
+    parser.add_argument("--dry-run", action="store_true", help="Validate inputs and stop before rendering/TTS/composition")
     parser.add_argument("--keep-temp", action="store_true", help="Keep intermediate files for debugging")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
 
@@ -114,6 +108,21 @@ Examples:
 
     if args.md and not os.path.exists(args.md):
         logger.error(f"File not found: {args.md}")
+        return 1
+
+    if not args.slides or not args.narration:
+        logger.error(
+            "Input error: --slides and --narration are required. "
+            "Planning is handled by the caller/agent before invoking this script."
+        )
+        return 1
+
+    if not os.path.exists(args.slides):
+        logger.error(f"File not found: {args.slides}")
+        return 1
+
+    if not os.path.exists(args.narration):
+        logger.error(f"File not found: {args.narration}")
         return 1
 
     if args.duration <= 0:
@@ -129,12 +138,8 @@ Examples:
             base = os.path.splitext(os.path.basename(args.md))[0]
             args.out = os.path.join(os.path.dirname(args.md) or ".", f"{base}.mp4")
         else:
-            args.out = "output.mp4"
-
-    if args.md:
-        logger.info(f"Reading {args.md}")
-        with open(args.md, "r", encoding="utf-8") as f:
-            md_content = f.read()
+            base = os.path.splitext(os.path.basename(args.slides))[0]
+            args.out = os.path.join(os.path.dirname(args.slides) or ".", f"{base}.mp4")
 
     tmp_dir = tempfile.mkdtemp(prefix="video_pub_")
     logger.debug(f"Working directory: {tmp_dir}")
@@ -142,77 +147,48 @@ Examples:
     try:
         _ensure_runtime_dependencies(enable_tts=not args.no_tts)
 
-        if args.slides and args.narration:
-            logger.info("Using pre-generated slides and narration...")
-            slides_path = os.path.join(tmp_dir, "slides.md")
-            shutil.copy(args.slides, slides_path)
-            
-            with open(args.narration, "r", encoding="utf-8") as f:
-                narration_data = json.load(f)
-            
-            class Scene:
-                def __init__(self, narration: str, title: str = "", scene_type: str = "content"):
-                    self.narration = narration
-                    self.title = title
-                    self.scene_type = scene_type
-            
-            scenes = [
+        logger.info("Using pre-generated slides and narration...")
+        slides_path = os.path.join(tmp_dir, "slides.md")
+        shutil.copy(args.slides, slides_path)
+
+        with open(args.narration, "r", encoding="utf-8") as f:
+            narration_data = json.load(f)
+
+        class Scene:
+            def __init__(self, narration: str, title: str = "", scene_type: str = "content"):
+                self.narration = narration
+                self.title = title
+                self.scene_type = scene_type
+
+        raw_scenes = narration_data.get("scenes", [])
+        if not isinstance(raw_scenes, list) or not raw_scenes:
+            logger.error("Input error: narration.json must contain a non-empty 'scenes' array")
+            return 1
+
+        scenes = []
+        for i, scene in enumerate(raw_scenes):
+            if not isinstance(scene, dict):
+                logger.error(f"Input error: scenes[{i}] must be an object")
+                return 1
+            if "narration" not in scene or not str(scene.get("narration", "")).strip():
+                logger.error(f"Input error: scenes[{i}].narration is required and must be non-empty")
+                return 1
+            scenes.append(
                 Scene(
-                    narration=s["narration"],
-                    title=s.get("title", ""),
-                    scene_type=s.get("scene_type", "content")
+                    narration=str(scene["narration"]),
+                    title=str(scene.get("title", "")),
+                    scene_type=str(scene.get("scene_type", "content")),
                 )
-                for s in narration_data.get("scenes", [])
-            ]
-            
-            narration_json_path = os.path.join(tmp_dir, "narration.json")
-            shutil.copy(args.narration, narration_json_path)
-
-        else:
-            if not args.md:
-                logger.error("Either --md OR (--slides AND --narration) must be provided")
-                return 1
-            if not args.style or not args.tone or not args.audience:
-                logger.error("--style, --tone, and --audience are required when using --md")
-                return 1
-
-            # Step 1: LLM plan and Slidev markdown generation.
-            from md_splitter import generate_slidev_content
-
-            logger.info("Planning slides with LLM...")
-            scenes, slides_md, plan_meta = generate_slidev_content(
-                md_content,
-                style_name=args.style,
-                duration_seconds=args.duration,
-                tone=args.tone,
-                audience=args.audience,
-                provided_title=None,
             )
-            logger.info(f"Planned {len(scenes)} scenes")
 
-            slides_path = os.path.join(tmp_dir, "slides.md")
-            with open(slides_path, "w", encoding="utf-8") as f:
-                f.write(slides_md)
+        plan_meta = narration_data.get("meta") if isinstance(narration_data.get("meta"), dict) else {}
 
-            narration_payload = {
-                "meta": plan_meta,
-                "scenes": [
-                    {
-                        "index": i,
-                        "scene_type": scene.scene_type,
-                        "title": scene.title,
-                        "narration": scene.narration,
-                    }
-                    for i, scene in enumerate(scenes)
-                ],
-            }
-            narration_json_path = os.path.join(tmp_dir, "narration.json")
-            _write_json(narration_json_path, narration_payload)
+        narration_json_path = os.path.join(tmp_dir, "narration.json")
+        shutil.copy(args.narration, narration_json_path)
 
-            if args.out_slides:
-                with open(args.out_slides, "w", encoding="utf-8") as f:
-                    f.write(slides_md)
-                logger.info(f"Saved generated slides markdown: {args.out_slides}")
+        if args.out_slides:
+            shutil.copy(slides_path, args.out_slides)
+            logger.info(f"Saved slides markdown copy: {args.out_slides}")
 
         if args.dry_run:
             print("\n" + "=" * 50)
@@ -221,8 +197,9 @@ Examples:
             print(f"  Slides:    {slides_path}")
             print(f"  Narration: {narration_json_path}")
             print(f"  Scenes:    {len(scenes)}")
-            print(f"  Model:     {plan_meta.get('model', 'unknown')}")
-            print(f"  Est time:  {plan_meta.get('estimated_duration_seconds', '?')}s")
+            if plan_meta:
+                print(f"  Model:     {plan_meta.get('model', 'unknown')}")
+                print(f"  Est time:  {plan_meta.get('estimated_duration_seconds', '?')}s")
             print("=" * 50)
             return 0
 
@@ -286,9 +263,12 @@ Examples:
         print(f"  Output:   {args.out}")
         print(f"  Size:     {file_size_mb:.1f} MB")
         print(f"  Scenes:   {len(scenes)}")
-        print(f"  Style:    {args.style}")
-        print(f"  Tone:     {args.tone}")
-        print(f"  Audience: {args.audience}")
+        if args.style:
+            print(f"  Style:    {args.style}")
+        if args.tone:
+            print(f"  Tone:     {args.tone}")
+        if args.audience:
+            print(f"  Audience: {args.audience}")
         if not args.no_tts:
             print(f"  Voice:    {args.voice or os.environ.get('VOLCANO_TTS_VOICE_TYPE', 'default')}")
         if args.keep_temp:

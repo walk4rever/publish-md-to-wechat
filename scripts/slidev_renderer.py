@@ -9,6 +9,9 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 logger = logging.getLogger("SlidevRenderer")
 
@@ -18,11 +21,26 @@ def _natural_key(path: str) -> list[object]:
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
 
 
-def ensure_slidev_available() -> None:
-    """Check required runtime tools for Slidev PNG export."""
+def ensure_slidev_available(theme: str) -> None:
+    """Check required runtime tools and local node deps for Slidev PNG export."""
     if shutil.which("npx") is None:
         raise ImportError(
-            "npx is required for Slidev export. Install Node.js (which includes npm/npx)."
+            "Environment missing: npx is required for Slidev export. Install Node.js (includes npm/npx)."
+        )
+
+    cli_pkg_path = os.path.join(PROJECT_ROOT, "node_modules", "@slidev", "cli")
+    if not os.path.exists(cli_pkg_path):
+        raise ImportError(
+            "Dependency missing: @slidev/cli is not installed in project root. "
+            "Run ./install.sh (or npm install) in the skill root."
+        )
+
+    theme_pkg_name = f"theme-{theme}"
+    theme_pkg_path = os.path.join(PROJECT_ROOT, "node_modules", "@slidev", theme_pkg_name)
+    if not os.path.exists(theme_pkg_path):
+        raise ImportError(
+            f"Dependency missing: @slidev/{theme_pkg_name} is not installed in project root. "
+            "Run ./install.sh (or npm install) in the skill root."
         )
 
 
@@ -33,38 +51,47 @@ def export_slidev_png(
     with_clicks: bool = False,
 ) -> list[str]:
     """Export Slidev markdown to ordered PNG slide images."""
-    ensure_slidev_available()
     os.makedirs(output_dir, exist_ok=True)
 
-    cmd = [
-        "npx",
-        "--yes",
-        "@slidev/cli",
-        "export",
-        slides_md_path,
-        "--format",
-        "png",
-        "--output",
-        output_dir,
-    ]
-    if with_clicks:
-        cmd.append("--with-clicks")
+    with open(slides_md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    theme_match = re.search(r"^theme:\s*([a-zA-Z0-9_-]+)", content, re.MULTILINE)
+    theme_name = theme_match.group(1) if theme_match else "default"
 
-    logger.info("Exporting slides with Slidev...")
+    ensure_slidev_available(theme_name)
+
+    temp_workdir = tempfile.mkdtemp(prefix="slidev_run_", dir=PROJECT_ROOT)
     try:
-        with open(slides_md_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        theme_match = re.search(r"^theme:\s*([a-zA-Z0-9_-]+)", content, re.MULTILINE)
-        theme_pkg = f"@slidev/theme-{theme_match.group(1)}" if theme_match and theme_match.group(1) != "default" else "@slidev/theme-default"
-        
-        theme_cmd = ["npm", "install", theme_pkg, "@slidev/cli"]
-        subprocess.run(theme_cmd, check=True, cwd=os.path.dirname(slides_md_path), capture_output=True)
-        subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=os.getcwd())
+        runtime_slides_path = os.path.join(temp_workdir, "slides.md")
+        shutil.copy2(slides_md_path, runtime_slides_path)
+
+        cmd = [
+            "npx",
+            "--no-install",
+            "@slidev/cli",
+            "export",
+            runtime_slides_path,
+            "--format",
+            "png",
+            "--output",
+            os.path.abspath(output_dir),
+        ]
+        if with_clicks:
+            cmd.append("--with-clicks")
+
+        logger.info("Exporting slides with Slidev (cwd=%s)...", PROJECT_ROOT)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=PROJECT_ROOT)
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()
         detail = stderr or stdout or str(exc)
-        raise RuntimeError(f"Slidev export failed: {detail}") from exc
+        raise RuntimeError(
+            "Slidev rendering failed. Check: 1) deps installed via ./install.sh in skill root; "
+            "2) export command running with skill-root cwd; 3) slides theme package exists. "
+            f"Raw error: {detail}"
+        ) from exc
+    finally:
+        shutil.rmtree(temp_workdir, ignore_errors=True)
 
     png_paths = glob.glob(os.path.join(output_dir, "**", "*.png"), recursive=True)
     png_paths.sort(key=_natural_key)
