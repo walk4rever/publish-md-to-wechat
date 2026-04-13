@@ -21,6 +21,7 @@ Optional env vars:
 import gzip
 import json
 import os
+import ssl
 import struct
 import uuid
 import logging
@@ -47,6 +48,14 @@ class TTSConfig:
     volume_ratio: float = 1.0
     pitch_ratio: float = 1.0
     encoding: str = "mp3"
+    verify_ssl: bool = True
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def load_tts_config() -> TTSConfig:
@@ -73,6 +82,7 @@ def load_tts_config() -> TTSConfig:
         speed_ratio=float(os.environ.get("VOLCANO_TTS_SPEED_RATIO", "1.0")),
         volume_ratio=float(os.environ.get("VOLCANO_TTS_VOLUME_RATIO", "1.0")),
         pitch_ratio=float(os.environ.get("VOLCANO_TTS_PITCH_RATIO", "1.0")),
+        verify_ssl=_env_bool("VOLCANO_TTS_VERIFY_SSL", True),
     )
 
 
@@ -143,13 +153,22 @@ def _parse_tts_frame(data: bytes) -> dict:
 
     if message_type == 0x0B:
         # Audio-only response
-        # Common layout: [header][sequence(int32)][payload_size(uint32)][audio bytes]
+        # Observed layout:
+        #   [header][sequence(int32)][reserved(uint32)][payload_size(uint32)][audio bytes]
+        # The server may also send an ACK-like frame:
+        #   [header][sequence(int32)][reserved(uint32)]  (8 bytes after header, no audio)
         if len(data) < header_size + 8:
-            return {"audio": None, "done": True, "error": None}
+            return {"audio": None, "done": False, "error": None}
 
         sequence = struct.unpack(">i", data[header_size:header_size + 4])[0]
-        payload_size = struct.unpack(">I", data[header_size + 4:header_size + 8])[0]
-        audio_data = data[header_size + 8:header_size + 8 + payload_size]
+
+        # ACK/metadata frame (no payload size / no audio).
+        if len(data) < header_size + 12:
+            return {"audio": None, "done": sequence < 0, "error": None}
+
+        payload_size = struct.unpack(">I", data[header_size + 8:header_size + 12])[0]
+        audio_start = header_size + 12
+        audio_data = data[audio_start:audio_start + payload_size]
 
         # sequence < 0 is usually the last chunk in ByteDance's protocol
         is_last = sequence < 0 or payload_size == 0
@@ -205,11 +224,14 @@ def synthesize(text: str, config: Optional[TTSConfig] = None) -> bytes:
     frame = _build_ws_frame(payload)
 
     # Connect and send
-    ws = websocket.create_connection(
-        config.ws_url,
-        header=[f"Authorization: Bearer;{config.access_token}"],
-        timeout=30,
-    )
+    ws_kwargs = {
+        "header": [f"Authorization: Bearer;{config.access_token}"],
+        "timeout": 30,
+    }
+    if not config.verify_ssl:
+        ws_kwargs["sslopt"] = {"cert_reqs": ssl.CERT_NONE, "check_hostname": False}
+
+    ws = websocket.create_connection(config.ws_url, **ws_kwargs)
 
     try:
         ws.send_binary(frame)

@@ -7,12 +7,13 @@ import os
 import struct
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from md_splitter import split_md_to_scenes
 from slide_renderer import render_slides_html
-from volcengine_tts import _parse_tts_frame
+from volcengine_tts import _parse_tts_frame, load_tts_config
 
 
 class TestMarkdownSplitter(unittest.TestCase):
@@ -56,13 +57,25 @@ class TestVolcengineFrameParser(unittest.TestCase):
         # Build a synthetic audio-only frame matching parser assumptions.
         header = bytes([0x11, 0xB0, 0x11, 0x00])  # v1, message_type=0x0B
         seq = struct.pack(">i", -1)  # negative => last chunk
+        reserved = struct.pack(">I", 0)
         payload = b"FAKEAUDIO"
         payload_size = struct.pack(">I", len(payload))
-        frame = header + seq + payload_size + payload
+        frame = header + seq + reserved + payload_size + payload
 
         parsed = _parse_tts_frame(frame)
         self.assertEqual(parsed["audio"], payload)
         self.assertTrue(parsed["done"])
+        self.assertIsNone(parsed["error"])
+
+    def test_parse_audio_ack_frame_not_done(self):
+        header = bytes([0x11, 0xB0, 0x11, 0x00])  # v1, message_type=0x0B
+        seq = struct.pack(">i", 0)
+        reserved = struct.pack(">I", 0)
+        frame = header + seq + reserved
+
+        parsed = _parse_tts_frame(frame)
+        self.assertIsNone(parsed["audio"])
+        self.assertFalse(parsed["done"])
         self.assertIsNone(parsed["error"])
 
     def test_parse_error_frame(self):
@@ -78,6 +91,17 @@ class TestVolcengineFrameParser(unittest.TestCase):
         parsed = _parse_tts_frame(frame)
         self.assertIsNotNone(parsed["error"])
         self.assertTrue(parsed["done"])
+
+
+class TestVolcengineConfig(unittest.TestCase):
+    def test_load_tts_config_verify_ssl_false(self):
+        with mock.patch.dict(os.environ, {
+            "VOLCANO_TTS_APPID": "test-appid",
+            "VOLCANO_TTS_ACCESS_TOKEN": "test-token",
+            "VOLCANO_TTS_VERIFY_SSL": "0",
+        }, clear=True):
+            config = load_tts_config()
+            self.assertFalse(config.verify_ssl)
 
 
 if __name__ == "__main__":

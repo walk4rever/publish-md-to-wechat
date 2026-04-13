@@ -107,6 +107,8 @@ Examples:
     parser.add_argument("--voice", default=None,
                         help="Volcengine voice_type (overrides VOLCANO_TTS_VOICE_TYPE env var)")
     parser.add_argument("--speed", type=float, default=None, help="TTS speed ratio (default: 1.0)")
+    parser.add_argument("--no-verify-ssl", action="store_true",
+                        help="Disable SSL certificate verification for Volcengine TTS WebSocket")
     parser.add_argument("--no-tts", action="store_true",
                         help="Skip TTS — generate video with minimum 2s per slide, no narration")
 
@@ -213,6 +215,8 @@ Examples:
                 os.environ["VOLCANO_TTS_VOICE_TYPE"] = args.voice
             if args.speed:
                 os.environ["VOLCANO_TTS_SPEED_RATIO"] = str(args.speed)
+            if args.no_verify_ssl:
+                os.environ["VOLCANO_TTS_VERIFY_SSL"] = "0"
 
             from volcengine_tts import synthesize_scenes
             narrations = [scene.narration for scene in scenes]
@@ -259,6 +263,8 @@ Examples:
         return 1
     except Exception as e:
         logger.error(f"Video generation failed: {e}")
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            logger.error("SSL verification failed for TTS. Retry with --no-verify-ssl if you are behind a proxy.")
         if args.verbose:
             import traceback
             traceback.print_exc()
