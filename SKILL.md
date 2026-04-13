@@ -92,16 +92,22 @@ description: Short summary for WeChat article list.
 
 ## Phase 4B: Generate WeChat Video (视频号)
 
+By default, ALWAYS generate video WITH TTS voice unless explicitly told not to.
+Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file, or load them from the environment.
+
+```bash
+# 导出 MP4（默认：带配音）
+.venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --voice zh_male_m191_uranus_bigtts --out [OUTPUT.mp4]
+```
+
 ```bash
 # 仅生成幻灯片预览
 .venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --dry-run --out-html /tmp/slides.html
+```
 
-# 导出 MP4（无配音）
+```bash
+# 导出 MP4（无配音 - 仅在用户明确要求时使用）
 .venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --no-tts --out [OUTPUT.mp4]
-
-# 导出 MP4（Volcengine 配音）
-VOLCANO_TTS_APPID=xxx VOLCANO_TTS_ACCESS_TOKEN=xxx \
-.venv/bin/python3 scripts/video_publisher.py --md [PATH] --style [STYLE] --voice zh_female_qingxin_moon_bigtts
 ```
 
 依赖：`ffmpeg`、`playwright + chromium`，使用配音时额外需要 `websocket-client`。

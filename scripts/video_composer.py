@@ -117,33 +117,35 @@ def compose_video(
                     ffmpeg_bin, "-y",
                     "-loop", "1", "-i", img,
                     "-i", audio,
+                    "-filter_complex", f"[0:v]{video_filter}[v];[1:a]aresample=44100,aformat=channel_layouts=stereo,apad[a]",
+                    "-map", "[v]",
+                    "-map", "[a]",
                     "-c:v", "libx264",
                     "-t", str(duration),
                     "-pix_fmt", "yuv420p",
-                    "-vf", video_filter,
                     "-r", "30",
                     "-preset", "medium",
                     "-crf", "23",
                     "-c:a", "aac",
                     "-b:a", "128k",
-                    "-shortest",
                     segment_path,
                 ]
             else:
                 cmd = [
                     ffmpeg_bin, "-y",
                     "-loop", "1", "-i", img,
-                    "-f", "lavfi", "-t", str(duration), "-i", "anullsrc=r=44100:cl=stereo",
+                    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                    "-filter_complex", f"[0:v]{video_filter}[v]",
+                    "-map", "[v]",
+                    "-map", "1:a",
                     "-c:v", "libx264",
                     "-t", str(duration),
                     "-pix_fmt", "yuv420p",
-                    "-vf", video_filter,
                     "-r", "30",
                     "-preset", "medium",
                     "-crf", "23",
                     "-c:a", "aac",
                     "-b:a", "128k",
-                    "-shortest",
                     segment_path,
                 ]
 
@@ -222,7 +224,7 @@ def _concat_with_fade(
     offsets: list[float] = []
     for i in range(n - 1):
         cumulative += seg_durations[i]
-        offset = max(0, cumulative - _FADE_DURATION)
+        offset = max(0, cumulative - (i + 1) * _FADE_DURATION)
         offsets.append(offset)
 
     if n == 2:
