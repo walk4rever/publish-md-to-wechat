@@ -16,6 +16,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 logger = logging.getLogger("SlidevRenderer")
 
 
+class SlidevDependencyError(ImportError):
+    """Raised when Slidev runtime dependencies are missing."""
+
+
+class SlidevRenderError(RuntimeError):
+    """Raised when Slidev export fails at render time."""
+
+
 def _natural_key(path: str) -> list[object]:
     name = os.path.basename(path)
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
@@ -24,22 +32,22 @@ def _natural_key(path: str) -> list[object]:
 def ensure_slidev_available(theme: str) -> None:
     """Check required runtime tools and local node deps for Slidev PNG export."""
     if shutil.which("npx") is None:
-        raise ImportError(
-            "Environment missing: npx is required for Slidev export. Install Node.js (includes npm/npx)."
+        raise SlidevDependencyError(
+            "[ENV_MISSING] npx is required for Slidev export. Install Node.js (includes npm/npx)."
         )
 
     cli_pkg_path = os.path.join(PROJECT_ROOT, "node_modules", "@slidev", "cli")
     if not os.path.exists(cli_pkg_path):
-        raise ImportError(
-            "Dependency missing: @slidev/cli is not installed in project root. "
+        raise SlidevDependencyError(
+            "[DEPENDENCY_MISSING] @slidev/cli is not installed in project root. "
             "Run ./install.sh (or npm install) in the skill root."
         )
 
     theme_pkg_name = f"theme-{theme}"
     theme_pkg_path = os.path.join(PROJECT_ROOT, "node_modules", "@slidev", theme_pkg_name)
     if not os.path.exists(theme_pkg_path):
-        raise ImportError(
-            f"Dependency missing: @slidev/{theme_pkg_name} is not installed in project root. "
+        raise SlidevDependencyError(
+            f"[DEPENDENCY_MISSING] @slidev/{theme_pkg_name} is not installed in project root. "
             "Run ./install.sh (or npm install) in the skill root."
         )
 
@@ -85,9 +93,11 @@ def export_slidev_png(
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()
         detail = stderr or stdout or str(exc)
-        raise RuntimeError(
-            "Slidev rendering failed. Check: 1) deps installed via ./install.sh in skill root; "
-            "2) export command running with skill-root cwd; 3) slides theme package exists. "
+        raise SlidevRenderError(
+            "[RENDER_FAILED] Slidev export failed. Check: "
+            "1) deps installed via ./install.sh in skill root; "
+            "2) command runs with skill-root cwd; "
+            "3) slides theme package exists. "
             f"Raw error: {detail}"
         ) from exc
     finally:

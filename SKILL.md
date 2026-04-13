@@ -16,6 +16,23 @@ description: >
 Publishes Markdown articles to WeChat Official Account drafts with professional visual styling,
 automatic image handling, and cover generation.
 
+## Operating Modes (strict boundary)
+
+### Mode A — Article Publish (公众号图文)
+Use when user wants Markdown -> WeChat draft publishing.
+- Inputs: `--md`, style, optional thumb/title
+- Output: WeChat draft media id
+- Command family: `scripts/wechat_publisher.py`
+
+### Mode B — Video Render (视频号)
+Use when user wants vertical MP4 generation.
+- Inputs (required): pre-generated `tmp/slides.md` + `tmp/narration.json`
+- Output: local `.mp4`
+- Command family: `scripts/video_publisher.py`
+- **Important:** This mode is execution-only. Planning (outline/slide content/narration writing) is done by caller/agent before invoking the script.
+
+Do not mix Mode A and Mode B steps in one flow unless user explicitly asks for both deliverables.
+
 ## Phase 1: Environment & Credentials
 
 **Check dependencies:**
@@ -140,8 +157,9 @@ Because the output is a mobile vertical video, default Slidev text is too small 
   }
   ```
 
-**Step 2: Render and Compose**
+**Step 2: Render and Compose (execution-only)**
 Use the script to export slides, synthesize TTS, and compose the final MP4.
+Do **not** pass `--md` for planning; Mode B requires pre-generated slides + narration.
 
 ```bash
 # 导出 MP4
