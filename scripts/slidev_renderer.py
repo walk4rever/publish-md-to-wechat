@@ -52,7 +52,12 @@ def export_slidev_png(
 
     logger.info("Exporting slides with Slidev...")
     try:
-        theme_cmd = ["npm", "install", "@slidev/theme-seriph", "@slidev/cli"]
+        with open(slides_md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        theme_match = re.search(r"^theme:\s*([a-zA-Z0-9_-]+)", content, re.MULTILINE)
+        theme_pkg = f"@slidev/theme-{theme_match.group(1)}" if theme_match and theme_match.group(1) != "default" else "@slidev/theme-default"
+        
+        theme_cmd = ["npm", "install", theme_pkg, "@slidev/cli"]
         subprocess.run(theme_cmd, check=True, cwd=os.path.dirname(slides_md_path), capture_output=True)
         subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=os.getcwd())
     except subprocess.CalledProcessError as exc:

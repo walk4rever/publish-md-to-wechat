@@ -163,11 +163,11 @@ def _parse_tts_frame(data: bytes) -> dict:
         sequence = struct.unpack(">i", data[header_size:header_size + 4])[0]
 
         # ACK/metadata frame (no payload size / no audio).
-        if len(data) < header_size + 12:
+        if len(data) < header_size + 8:
             return {"audio": None, "done": sequence < 0, "error": None}
 
-        payload_size = struct.unpack(">I", data[header_size + 8:header_size + 12])[0]
-        audio_start = header_size + 12
+        payload_size = struct.unpack(">I", data[header_size + 4:header_size + 8])[0]
+        audio_start = header_size + 8
         audio_data = data[audio_start:audio_start + payload_size]
 
         # sequence < 0 is usually the last chunk in ByteDance's protocol
