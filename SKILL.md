@@ -7,7 +7,7 @@ description: >
   anything like "发布到微信"、"推送到公众号"、"微信文章"、"publish to WeChat"、"WeChat draft"、
   "公众号推文"、"wechat article"、"微信公众号". Also trigger when the user asks to convert Markdown
   to a styled HTML document for WeChat, even if they don't say "publish" explicitly. This skill
-  handles credentials, image uploads, 11 style presets (3 core + 7 extend + custom), automatic
+  handles credentials, image uploads, 13 style presets (3 core + 7 extend + unlimited custom), automatic
   cover generation, and draft creation end-to-end.
 ---
 
@@ -195,9 +195,19 @@ Do **not** pass `--md` for planning; Mode B requires pre-generated slides + narr
 
 ## Custom Styles
 
+Style replication uses Playwright `getComputedStyle()` (not inline CSS parsing) for accurate colors,
+and automatically detects structural patterns:
+- **Heading style**: `bg-block` (colored section bg) / `left-border` / `underline` / `plain`
+- **Blockquote style**: `left-border` / `full-box` / `plain`
+
+The renderer applies these structural hints when publishing with a custom style.
+
 ```bash
-# Create from WeChat article
-.venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --no-verify-ssl
+# Create from WeChat article (give it a meaningful name)
+.venv/bin/python3 scripts/styles.py --url https://mp.weixin.qq.com/s/xxx --name custom-myname --no-verify-ssl
+
+# List all styles (core / extend / custom)
+.venv/bin/python3 scripts/styles.py --list
 
 # Rename
 .venv/bin/python3 scripts/styles.py --rename custom-old custom-new

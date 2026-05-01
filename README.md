@@ -1,6 +1,6 @@
 # Publish MD to WeChat
 
-**v0.6.0** · [English](#english) | [中文](#中文)
+**v0.8.2** · [English](#english) | [中文](#中文)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -24,7 +24,7 @@ WeChat Official Accounts (公众号) power **23 million+ publishers** — brands
 |--------|--------|
 | **23M+ Official Accounts** | Every one needs a better publishing workflow |
 | **30+ min saved per article** | Manual formatting → one command |
-| **11 professional styles** | Consistent brand identity, no design skills needed |
+| **13 professional styles** | 3 core + 7 extended + unlimited custom via URL replication |
 | **Zero lock-in** | MIT-licensed, your Markdown stays yours |
 
 ### How It Works
@@ -73,7 +73,7 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 | Category | Capability |
 |----------|-----------|
 | **Rendering** | AST-powered via `mistune` 3.x — nested lists, tables, code blocks, footnotes |
-| **Styles** | 3 core classics + 7 extended + unlimited custom styles via URL replication |
+| **Styles** | 3 core classics + 7 extended + unlimited custom styles via URL replication (Playwright-powered: extracts computed colors + heading/blockquote structure) |
 | **Images** | Local files, external URLs, Obsidian WikiLinks — auto-uploaded to WeChat CDN |
 | **Covers** | Auto-generated branded PNG from title + style (Pillow) |
 | **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
@@ -224,14 +224,14 @@ echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
 |------|------|
 | **2300万+ 公众号** | 每一个都需要更好的发布流程 |
 | **每篇节省 30+ 分钟** | 手工排版 → 一行命令 |
-| **11 种专业样式** | 品牌一致性，零设计门槛 |
+| **13 种专业样式** | 3 核心 + 7 扩展 + 无限自定义（URL 复刻） |
 | **零锁定** | MIT 开源，Markdown 永远是你的 |
 
 ### 功能
 
 - **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块）
-- **11 种视觉样式** — 3 经典核心 + 7 扩展 + 无限自定义
-- **样式复刻** — 分析任意微信文章 URL，提取视觉风格，保存为可复用预设
+- **13 种视觉样式** — 3 经典核心 + 7 扩展 + 无限自定义
+- **深度样式复刻** — Playwright 提取计算后样式（非 inline CSS），自动识别标题结构（色块/左边线/下划线）和引用块结构，保存为可复用预设
 - **Obsidian 兼容** — 原生支持 `![[WikiLink]]` 图片语法
 - **智能图片上传** — 本地图片、外部 URL 自动上传微信 CDN
 - **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
@@ -312,7 +312,7 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 | Core publishing pipeline (AST render + image upload + draft) | ✅ Shipped |
 | 10 built-in style presets | ✅ Shipped |
 | Auto cover generation (Pillow) | ✅ Shipped |
-| Custom style replication from any WeChat article | ✅ Shipped |
+| Custom style replication (Playwright computed styles + structural hints) | ✅ Shipped |
 | Obsidian WikiLink support | ✅ Shipped |
 | YAML frontmatter auto-extraction | ✅ Shipped |
 | Style quality refinement (classic trio polish) | 🚧 In Progress |
