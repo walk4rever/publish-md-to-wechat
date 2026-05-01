@@ -287,6 +287,37 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def heading(self, text, level):
         s = self.style
+
+        # Custom styles: use extracted structural hints
+        if self.style_name.startswith("custom-"):
+            h_style = s.get("heading_style", "plain") if level <= 2 else s.get("h3_style", "plain")
+            h_bg = s.get("heading_bg")
+            h_border = s.get("heading_border_color") or s.get("h3_border_color") or s["accent"]
+            raw_h_color = s.get("heading_color")
+            # If heading_color == heading_bg, text would be invisible — use text color instead
+            h_color = raw_h_color if (raw_h_color and raw_h_color != h_bg) else s["text"]
+            fs = "26px" if level == 1 else "20px" if level == 2 else "17px"
+
+            if level == 1:
+                return (f'<section style="margin: 30px 0 20px; border-bottom: 3px solid {s["accent"]}; padding-bottom: 10px;">'
+                        f'<h1 style="font-size: {fs}; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h1></section>\n')
+
+            if h_style == "bg-block" and h_bg:
+                return (f'<section style="margin: 28px 0 12px; background-color: {h_bg}; padding: 8px 14px; border-radius: 3px;">'
+                        f'<h{level} style="font-size: {fs}; font-weight: bold; color: {h_color}; margin: 0;">{text}</h{level}></section>\n')
+
+            if h_style == "left-border":
+                return (f'<section style="margin: 28px 0 12px; border-left: 4px solid {h_border}; padding-left: 12px;">'
+                        f'<h{level} style="font-size: {fs}; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h{level}></section>\n')
+
+            if h_style == "underline":
+                return (f'<section style="margin: 28px 0 12px; border-bottom: 2px solid {s["accent"]}; padding-bottom: 6px;">'
+                        f'<h{level} style="font-size: {fs}; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h{level}></section>\n')
+
+            # plain
+            return (f'<section style="margin: 28px 0 12px;">'
+                    f'<h{level} style="font-size: {fs}; font-weight: bold; color: {s["accent"]}; margin: 0;">{text}</h{level}></section>\n')
+
         # Simplified Swiss style for long articles
         if self.style_name == "swiss":
             if level == 1:
@@ -316,13 +347,41 @@ class WeChatRenderer(mistune.HTMLRenderer):
         return f'<h{level} style="margin: 20px 0; font-weight: bold;">{text}</h{level}>\n'
 
     def paragraph(self, text):
+        s = self.style
         line_height = "1.75" if self.style_name == "swiss" else "1.8"
         font_size = "15px" if self.style_name == "swiss" else "16px"
         margin = "16px 0" if self.style_name == "swiss" else "15px 0"
-        return f'<p style="font-size: {font_size}; line-height: {line_height}; margin: {margin}; color: {self.style["text"]};">{text}</p>\n'
+        font_family = f' font-family: {s["font"]};' if self.style_name.startswith("custom-") and s.get("font") else ""
+        return f'<p style="font-size: {font_size}; line-height: {line_height}; margin: {margin}; color: {s["text"]};{font_family}">{text}</p>\n'
 
     def block_quote(self, text):
         s = self.style
+
+        # Custom styles: use extracted structural hints
+        if self.style_name.startswith("custom-"):
+            bq_style = s.get("blockquote_style", "left-border")
+            bq_bg = s.get("blockquote_bg")
+            bq_border = s.get("blockquote_border_color") or s["accent"]
+            fallback_bg = "#f9f9f9" if s["bg"].upper() in ("#FFFFFF", "#FAF9F5", "#F5F3EE") else "rgba(255,255,255,0.05)"
+            bg = bq_bg or fallback_bg
+
+            if bq_style == "full-box":
+                return (f'<section style="margin: 25px 0; padding: 20px; border: 1px solid {bq_border}; '
+                        f'background-color: {bg}; border-radius: 4px;">'
+                        f'<section style="color: {s["text"]}; font-size: 15px; line-height: 1.8; font-style: italic;">'
+                        f'{text}</section></section>\n')
+
+            if bq_style == "left-border":
+                border_w = s.get("border_width", "4px")
+                return (f'<section style="margin: 25px 0; padding: 16px 20px; '
+                        f'border-left: {border_w} solid {bq_border}; background-color: {bg};">'
+                        f'<section style="color: {s["text"]}; font-size: 15px; line-height: 1.8; font-style: italic;">'
+                        f'{text}</section></section>\n')
+
+            # plain
+            return (f'<section style="margin: 25px 0; padding: 15px 20px; color: {s["secondary"]}; '
+                    f'font-size: 15px; line-height: 1.8; font-style: italic;">{text}</section>\n')
+
         if self.style_name == "swiss":
             return (f'<section style="margin: 25px 0; padding: 16px 20px; background-color: #f5f5f5; '
                     f'border-left: 3px solid #bbbbbb; color: {s["secondary"]}; font-size: 15px; line-height: 1.7; '
@@ -458,10 +517,11 @@ class WeChatRenderer(mistune.HTMLRenderer):
             bullet, bullet_size = "■", "14px"
         margin_right = "8px"
         
+        font_family = f' font-family: {s["font"]};' if self.style_name.startswith("custom-") and s.get("font") else ""
         return (f'<section style="margin: 8px 0; display: flex; align-items: flex-start;">'
                 f'<span style="color: {s["accent"]}; font-weight: bold; margin-right: {margin_right}; '
                 f'font-size: {bullet_size}; line-height: 1.2;">{bullet}</span>'
-                f'<section style="font-size: 15px; line-height: 1.6; color: {s["text"]};">{text}</section></section>\n')
+                f'<section style="font-size: 15px; line-height: 1.6; color: {s["text"]};{font_family}">{text}</section></section>\n')
 
     def thematic_break(self):
         """Render horizontal rule (--- in Markdown) as empty.

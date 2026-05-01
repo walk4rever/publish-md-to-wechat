@@ -30,6 +30,148 @@ except ImportError:
     BeautifulSoup = None
 
 # ============================================================
+# Playwright JS extraction (computed styles + structural hints)
+# ============================================================
+
+_PLAYWRIGHT_EXTRACT_JS = """
+() => {
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+  const gs = el => window.getComputedStyle(el);
+
+  const toHex = rgb => {
+    const m = String(rgb).match(/rgba?\\(\\s*(\\d+)[,\\s]+(\\d+)[,\\s]+(\\d+)/);
+    if (!m) return null;
+    const am = String(rgb).match(/,\\s*([\\d.]+)\\s*\\)$/);
+    if (am && parseFloat(am[1]) < 0.05) return null;
+    return '#' + [+m[1],+m[2],+m[3]].map(x => x.toString(16).padStart(2,'0').toUpperCase()).join('');
+  };
+
+  const isBlank = c => !c || c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
+
+  const freq = arr => {
+    const counts = arr.reduce((a,c)=>{a[c]=(a[c]||0)+1;return a;},{});
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  };
+
+  const content = $('#js_content') || $('.rich_media_content') || document.body;
+
+  // --- Background ---
+  const rawBg = gs(content).backgroundColor;
+  const rawBodyBg = gs(document.body).backgroundColor;
+  const bg = (!isBlank(rawBg) && toHex(rawBg))
+    || (!isBlank(rawBodyBg) && toHex(rawBodyBg))
+    || '#FFFFFF';
+
+  // --- Text color (modal paragraph color) ---
+  const pColors = $$('p').slice(0, 20)
+    .map(p => toHex(gs(p).color)).filter(Boolean);
+  const text = pColors.length ? freq(pColors)[0][0] : '#1A1A1A';
+
+  // --- Font / size / line-height ---
+  const baseEl = content.querySelector('p') || content;
+  const baseS = gs(baseEl);
+  const font = baseS.fontFamily;
+  const fontSize = baseS.fontSize;
+  const lineHeight = baseS.lineHeight;
+
+  // --- Heading structure helper ---
+  const analyzeHeading = el => {
+    const s = gs(el);
+    const par = el.parentElement;
+    const ps = par ? gs(par) : null;
+    const elBg  = !isBlank(s.backgroundColor)  ? toHex(s.backgroundColor)  : null;
+    const parBg = ps && !isBlank(ps.backgroundColor) ? toHex(ps.backgroundColor) : null;
+    const blockBg = parBg || elBg;
+    const borderLeft  = parseFloat(ps ? ps.borderLeftWidth  : s.borderLeftWidth)  || 0;
+    const borderRight = parseFloat(ps ? ps.borderRightWidth : 0) || 0;
+    const borderBottom = parseFloat(s.borderBottomWidth) || 0;
+    let type = 'plain';
+    if (blockBg && blockBg.toUpperCase() !== bg.toUpperCase()) type = 'bg-block';
+    else if (borderLeft > 0 && borderRight === 0) type = 'left-border';
+    else if (borderBottom > 0) type = 'underline';
+    const borderColor = borderLeft > 0
+      ? toHex((ps || s).borderLeftColor) : null;
+    return {
+      type,
+      bg: type === 'bg-block' ? blockBg : null,
+      color: toHex(s.color),
+      borderColor
+    };
+  };
+
+  const h2s = $$('h2').slice(0,6).map(analyzeHeading);
+  const h3s = $$('h3').slice(0,6).map(analyzeHeading);
+  const dominant = arr => arr.length ? freq(arr.map(h=>h.type))[0][0] : 'plain';
+
+  const h2Style = dominant(h2s);
+  const h2Bg = (h2s.find(h=>h.bg) || {}).bg || null;
+  const h2BorderColor = (h2s.find(h=>h.borderColor) || {}).borderColor || null;
+  const h2Color = (h2s.find(h=>h.color) || {}).color || null;
+  const h3Style = dominant(h3s);
+  const h3BorderColor = (h3s.find(h=>h.borderColor) || {}).borderColor || null;
+
+  // --- Blockquote structure ---
+  const bqEls = $$('blockquote').slice(0,3);
+  const bqInfo = bqEls.map(el => {
+    const s = gs(el);
+    const bl = parseFloat(s.borderLeftWidth)  || 0;
+    const br = parseFloat(s.borderRightWidth) || 0;
+    const bt = parseFloat(s.borderTopWidth)   || 0;
+    const bqBg = !isBlank(s.backgroundColor) ? toHex(s.backgroundColor) : null;
+    const borderColor = bl > 0 ? toHex(s.borderLeftColor) : null;
+    let type = 'plain';
+    if (bl > 0 && br === 0 && bt === 0) type = 'left-border';
+    else if (bl > 0 || bqBg) type = 'full-box';
+    return { type, bg: bqBg, borderColor };
+  });
+  const bqStyle = bqInfo.length ? bqInfo[0].type : 'left-border';
+  const bqBg = ((bqInfo.find(b=>b.bg) || {}).bg) || null;
+  const bqBorderColor = ((bqInfo.find(b=>b.borderColor) || {}).borderColor) || null;
+
+  // --- Accent (most distinctive color: border/link colors, not heading bgs) ---
+  // Exclude browser-default link colors and colors too close to bg
+  const BROWSER_DEFAULTS = new Set(['#0000EE','#0000FF','#551A8B','#000080']);
+  const hexDist = (a, b) => {
+    const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    const [r1,g1,b1] = p(a), [r2,g2,b2] = p(b);
+    return Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+  };
+  const accentPool = [
+    h2BorderColor, h3BorderColor, bqBorderColor,
+    ...(h2Color && h2Color !== h2Bg ? [h2Color] : []),
+    ...$$('a').slice(0,8).map(a => toHex(gs(a).color))
+  ].filter(Boolean).filter(c =>
+    c.toUpperCase() !== text.toUpperCase() &&
+    c.toUpperCase() !== bg.toUpperCase() &&
+    !BROWSER_DEFAULTS.has(c.toUpperCase()) &&
+    hexDist(c.toUpperCase(), bg.toUpperCase()) > 60
+  );
+  const accent = accentPool.length ? freq(accentPool)[0][0] : text;
+
+  // --- Secondary ---
+  const secPool = $$('span').slice(0,30)
+    .map(el => toHex(gs(el).color)).filter(Boolean)
+    .filter(c => c !== text && c !== accent && c !== bg);
+  const secondary = secPool.length ? freq(secPool)[0][0] : '#666666';
+
+  return {
+    bg, text, accent, secondary,
+    font, font_size: fontSize, line_height: lineHeight,
+    heading_style: h2Style,
+    heading_bg: h2Bg,
+    heading_border_color: h2BorderColor,
+    heading_color: h2Color,
+    h3_style: h3Style,
+    h3_border_color: h3BorderColor,
+    blockquote_style: bqStyle,
+    blockquote_bg: bqBg,
+    blockquote_border_color: bqBorderColor,
+  };
+}
+"""
+
+# ============================================================
 # Logging Configuration
 # ============================================================
 
@@ -636,37 +778,115 @@ def extract_style_from_content(content: Any,
     return style
 
 
+def _analyze_with_playwright(html: str) -> Dict[str, Any]:
+    """Extract computed styles and structural hints using a headless browser.
+
+    Writes html to a temp file, loads it in Playwright Chromium, and runs
+    getComputedStyle() + structural analysis via _PLAYWRIGHT_EXTRACT_JS.
+
+    Returns the raw JS result dict, or raises on failure.
+    """
+    import tempfile
+    import os as _os
+
+    from playwright.sync_api import sync_playwright
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', encoding='utf-8', delete=False) as f:
+        f.write(html)
+        tmp_path = f.name
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(f'file://{tmp_path}', wait_until='domcontentloaded')
+            try:
+                page.wait_for_selector('#js_content, .rich_media_content', timeout=4000)
+            except Exception:
+                pass
+            result = page.evaluate(_PLAYWRIGHT_EXTRACT_JS)
+            browser.close()
+        return result or {}
+    finally:
+        _os.unlink(tmp_path)
+
+
+def _extract_title_from_html(html: str) -> Optional[str]:
+    """Extract article title using BeautifulSoup (lightweight, no browser needed)."""
+    if BeautifulSoup is None:
+        return None
+    soup = BeautifulSoup(html, 'html.parser')
+    title_elem = soup.find('h1', id='activity-name') or soup.find('h1', class_='rich_media_title')
+    if title_elem:
+        return title_elem.get_text(strip=True)[:50]
+    return None
+
+
 def analyze_html(html: str) -> Dict[str, Any]:
     """Analyze HTML and extract style configuration.
-    
+
+    Tries Playwright first (computed styles + structural hints).
+    Falls back to BeautifulSoup inline-style parsing if Playwright is unavailable.
+
     Args:
         html: HTML content
-        
+
     Returns:
         Style configuration dictionary
     """
+    # --- Playwright path (preferred) ---
+    try:
+        pw = _analyze_with_playwright(html)
+        if pw:
+            # Normalize line_height: browser returns px ("27.2px"), convert to ratio
+            raw_lh = pw.get("line_height", "")
+            font_size_px = pw.get("font_size", "15px")
+            try:
+                lh_px = float(str(raw_lh).replace("px", ""))
+                fs_px = float(str(font_size_px).replace("px", ""))
+                pw["line_height"] = f"{lh_px / fs_px:.2f}" if fs_px else "1.75"
+            except (ValueError, ZeroDivisionError):
+                pw["line_height"] = pw.get("line_height", "1.75")
+
+            # Rename font_size key to match existing schema
+            pw["font_size"] = pw.pop("font_size", "15px")
+
+            # Add border_width fallback for renderers that use it
+            pw.setdefault("border_width", "3px")
+
+            # Attach article title
+            title = _extract_title_from_html(html)
+            if title:
+                pw["source_title"] = title
+
+            if logger:
+                logger.success("Style extracted via Playwright (computed styles + structure)")
+            return pw
+    except ImportError:
+        if logger:
+            logger.debug("Playwright not available, using HTML parser")
+    except Exception as e:
+        if logger:
+            logger.warning(f"Playwright extraction failed ({e}), falling back to HTML parser")
+
+    # --- BeautifulSoup fallback ---
     if BeautifulSoup is None:
         raise ImportError("beautifulsoup4 is required. Install with: pip install beautifulsoup4")
-    
-    soup = BeautifulSoup(html, 'html.parser')
 
-    # Parse <style> blocks for theme-level CSS rules
+    soup = BeautifulSoup(html, 'html.parser')
     stylesheet_rules = extract_stylesheet_rules(soup)
     logger.debug(f"Parsed {len(stylesheet_rules)} CSS rules from <style> blocks")
 
-    # Extract main content
     content = extract_main_content(soup)
     if content is None:
         raise ValueError("Could not find main content in HTML")
-    
-    # Extract style (pass stylesheet rules for fallback lookup)
+
     style = extract_style_from_content(content, stylesheet_rules)
-    
-    # Extract article title if available
+
     title_elem = soup.find('h1', id='activity-name') or soup.find('h1', class_='rich_media_title')
     if title_elem:
         style["source_title"] = title_elem.get_text(strip=True)[:50]
-    
+
     return style
 
 
