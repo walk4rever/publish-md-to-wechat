@@ -6,9 +6,11 @@ description: >
   format a blog post or technical tutorial for WeChat, apply a visual style to Markdown, or says
   anything like "发布到微信"、"推送到公众号"、"微信文章"、"publish to WeChat"、"WeChat draft"、
   "公众号推文"、"wechat article"、"微信公众号". Also trigger when the user asks to convert Markdown
-  to a styled HTML document for WeChat, even if they don't say "publish" explicitly. This skill
-  handles credentials, image uploads, 13 style presets (3 core + 7 extend + unlimited custom), automatic
-  cover generation, and draft creation end-to-end.
+  to a styled HTML document for WeChat, even if they don't say "publish" explicitly. Also trigger
+  for translation/repost requests: "全文翻译"、"转载"、"translate and publish"、"repost"、or when the
+  source article is in English and the user wants to publish it to WeChat. This skill handles
+  credentials, image uploads, 13 style presets (3 core + 7 extend + unlimited custom), automatic
+  cover generation, full-article translation, and draft creation end-to-end.
 ---
 
 # publish-md-to-wechat
@@ -31,7 +33,16 @@ Use when user wants vertical MP4 generation.
 - Command family: `scripts/video_publisher.py`
 - **Important:** This mode is execution-only. Planning (outline/slide content/narration writing) is done by caller/agent before invoking the script.
 
+### Mode C — Translation & Repost (全文翻译/转载)
+Use when user wants to translate a foreign-language article and publish it to WeChat.
+- Trigger: "全文翻译"、"转载"、"translate"、"repost"、or source article is in English/other language.
+- Inputs: source Markdown file (English or other language)
+- Output: WeChat draft media id (same as Mode A)
+- Workflow: Agent translates natively (no Python script) → saves to `/tmp/translated_article.md` → proceeds as Mode A.
+- **Important:** Translation is done by the agent itself, not by any script. Do not invoke an LLM via Python for translation.
+
 Do not mix Mode A and Mode B steps in one flow unless user explicitly asks for both deliverables.
+Mode C always ends with Mode A publishing — it is a pre-processing step, not a separate pipeline.
 
 ## Phase 1: Environment & Credentials
 
@@ -47,9 +58,7 @@ if the script explicitly fails with an auth error.
 
 ---
 
-## Phase 1B: Translation & Repost (转载/全文翻译)
-
-Trigger when user says: "全文翻译"、"转载"、"translate"、"repost"、or the source article is in English.
+## Phase 1B: Mode C — Translation & Repost
 
 **Do not summarize or adapt — translate the full article faithfully.**
 
@@ -57,10 +66,12 @@ Trigger when user says: "全文翻译"、"转载"、"translate"、"repost"、or 
 2. Translate the entire content to Chinese, preserving:
    - All Markdown structure (headings, lists, code blocks, blockquotes, images)
    - Original section order and hierarchy
-   - Technical terms in English where standard (e.g. agent, token, context window)
-   - Author attribution — add a frontmatter note: `> 本文译自：[原文标题]，作者：[Author]`
-3. Save the translated content to a temp file (e.g. `/tmp/translated_article.md`).
-4. Proceed to Phase 2 with the translated file.
+   - Technical terms in English where standard (e.g. agent, token, context window, bash)
+   - Code blocks verbatim — do not translate code
+   - Author attribution in frontmatter: `> 本文译自：[原文标题](url)，作者：[Author]（[Publication]）`
+3. Write YAML frontmatter with `title`, `author`, `description` in Chinese.
+4. Save to `/tmp/translated_article.md`.
+5. Proceed to Phase 2 with the translated file as `--md`.
 
 **Do not ask for confirmation before translating** — if the user said "全文翻译/转载", just do it.
 

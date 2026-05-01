@@ -128,6 +128,43 @@ def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
 # WeChat HTML Renderer (AST-based)
 # ============================================================
 
+def _wrap_code_lines(code: str, max_width: int = 45) -> str:
+    """Wrap long code lines at comma boundaries for mobile readability."""
+    result = []
+    for line in code.split('\n'):
+        if len(line) <= max_width:
+            result.append(line)
+            continue
+        indent = len(line) - len(line.lstrip())
+        continuation = ' ' * (indent + 4)
+        wrapped = _wrap_at_commas(line, max_width, continuation)
+        result.append(wrapped)
+    return '\n'.join(result)
+
+
+def _wrap_at_commas(line: str, max_width: int, continuation: str) -> str:
+    """Break a single long line at comma positions, respecting max_width."""
+    if len(line) <= max_width:
+        return line
+    # Find the last comma before max_width that's not inside a string
+    best = -1
+    in_string = None
+    for i, ch in enumerate(line):
+        if ch in ('"', "'") and (i == 0 or line[i-1] != '\\'):
+            if in_string == ch:
+                in_string = None
+            elif in_string is None:
+                in_string = ch
+        if ch == ',' and in_string is None and i < max_width:
+            best = i
+    if best == -1:
+        return line
+    head = line[:best + 1]
+    tail = line[best + 1:].lstrip()
+    rest = continuation + tail
+    return head + '\n' + _wrap_at_commas(rest, max_width, continuation)
+
+
 def _detect_ascii_table(code: str):
     """Detect pipe-delimited ASCII tables inside a code block.
 
@@ -452,21 +489,23 @@ class WeChatRenderer(mistune.HTMLRenderer):
         s = self.style
         def _escape(c):
             return c.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+        wrapped_code = _wrap_code_lines(code)
         if self.style_name == "swiss":
-            escaped_code = _escape(code)
+            escaped_code = _escape(wrapped_code)
             return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f0f0f0; '
                     f'border-radius: 0; overflow-x: auto; border-left: 3px solid #dddddd; border-top: none; '
                     f'border-right: none; border-bottom: none;">'
                     f'<pre style="margin: 0; font-family: \'JetBrains Mono\', Menlo, Monaco, Consolas, monospace; '
-                    f'font-size: 13px; line-height: 1.5; '
+                    f'font-size: 11px; line-height: 1.5; word-break: break-word; '
                     f'color: #333333; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
         bg = "rgba(255,255,255,0.05)" if s["bg"] != "#ffffff" else "#f6f6f6"
         border_color = s["accent"] if self.style_name in ["terminal", "cyber"] else s["secondary"]
-        escaped_code = _escape(code)
+        escaped_code = _escape(wrapped_code)
         return (f'<section style="margin: 20px 0; padding: 15px; background-color: {bg}; '
                 f'border: 1px solid {border_color}; border-radius: 4px; overflow-x: auto;">'
-                f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 14px; line-height: 1.5; '
+                f'<pre style="margin: 0; font-family: {s["font"]}; font-size: 12px; line-height: 1.5; '
+                f'word-break: break-word; '
                 f'color: {s["text"]}; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
     def block_code(self, code, info=None):

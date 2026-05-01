@@ -1,6 +1,6 @@
 # Publish MD to WeChat
 
-**v0.8.2** · [English](#english) | [中文](#中文)
+**v0.8.3** · [English](#english) | [中文](#中文)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -59,7 +59,11 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 # 3. Preview (no API calls)
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
-# 4. Generate vertical video (1080x1920)
+# 4. Translate & repost a foreign article (agent-native, no extra script)
+# The Claude agent translates the article, saves to /tmp/translated_article.md, then publishes:
+.venv/bin/python3 scripts/wechat_publisher.py --md /tmp/translated_article.md --style swiss
+
+# 5. Generate vertical video (1080x1920)
 # First prepare tmp/slides.md + tmp/narration.json via agent/planner
 .venv/bin/python3 scripts/video_publisher.py \
   --slides tmp/slides.md \
@@ -77,8 +81,9 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 | **Images** | Local files, external URLs, Obsidian WikiLinks — auto-uploaded to WeChat CDN |
 | **Covers** | Auto-generated branded PNG from title + style (Pillow) |
 | **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
+| **Translation & Repost** | Agent-native full-article translation (English → Chinese) with attribution, then publish — no extra script |
 | **Video links (article mode)** | YouTube/Bilibili links → clean text links, not broken images |
-| **Video export (new)** | Markdown → LLM planning → Slidev PNG export → narration (Volcengine TTS) → MP4 |
+| **Video export** | Markdown → LLM planning → Slidev PNG export → narration (Volcengine TTS) → MP4 |
 | **Credentials** | Project `.env` → global config → env vars (multi-level priority) |
 | **Preview** | `--dry-run` generates HTML locally, zero API calls |
 
@@ -112,6 +117,29 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 ```
 
 Custom styles are stored in `~/.config/publish-md-to-wechat/custom-styles/` as JSON files with `custom-` prefix.
+
+### Translation & Repost (全文翻译/转载)
+
+> Translation is handled by the Claude agent natively — no extra script or API call needed.
+> The agent translates faithfully, preserving all Markdown structure and code blocks verbatim.
+
+**Workflow:**
+
+```
+English article.md
+  → [Agent: full translation to Chinese]
+  → /tmp/translated_article.md  (with attribution frontmatter)
+  → wechat_publisher.py --md /tmp/translated_article.md --style swiss
+  → WeChat draft
+```
+
+**What the agent preserves:**
+- All headings, lists, code blocks, tables, images — structure unchanged
+- Code blocks verbatim (code is never translated)
+- Technical terms in English (agent, token, context window, bash, etc.)
+- Attribution header: `> 本文译自：[Title](url)，作者：Author（Publication）`
+
+**Trigger phrases:** "全文翻译"、"转载"、"translate and publish"、"repost"
 
 ### Video Generation (WeChat 视频号)
 
@@ -232,12 +260,13 @@ echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
 - **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块）
 - **13 种视觉样式** — 3 经典核心 + 7 扩展 + 无限自定义
 - **深度样式复刻** — Playwright 提取计算后样式（非 inline CSS），自动识别标题结构（色块/左边线/下划线）和引用块结构，保存为可复用预设
+- **全文翻译/转载** — Claude Agent 原生全文翻译（英→中），保留所有 Markdown 结构和代码块，自动添加原文出处，无需额外脚本
 - **Obsidian 兼容** — 原生支持 `![[WikiLink]]` 图片语法
 - **智能图片上传** — 本地图片、外部 URL 自动上传微信 CDN
 - **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
 - **YAML Frontmatter** — 自动提取标题、作者、摘要
 - **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接
-- **视频生成（新）** — Markdown 自动生成竖屏 MP4（切片、截图、配音、合成）
+- **视频生成** — Markdown 自动生成竖屏 MP4（切片、截图、配音、合成）
 - **凭证管理** — 项目级、全局级或环境变量级凭证解析
 - **本地预览** — `--dry-run` 模式生成 HTML 预览，不调用任何 API
 
@@ -254,7 +283,11 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 # 3. 本地预览（不调用 API）
 .venv/bin/python3 scripts/wechat_publisher.py --md article.md --style ink --dry-run --out-html /tmp/preview.html
 
-# 4. 生成竖屏视频（1080x1920）
+# 4. 全文翻译转载（Claude Agent 原生翻译，无需额外脚本）
+# 对 agent 说"全文翻译/转载"，agent 翻译并保存到 /tmp/translated_article.md 后发布：
+.venv/bin/python3 scripts/wechat_publisher.py --md /tmp/translated_article.md --style swiss
+
+# 5. 生成竖屏视频（1080x1920）
 # 先由 agent/planner 生成 tmp/slides.md + tmp/narration.json
 .venv/bin/python3 scripts/video_publisher.py \
   --slides tmp/slides.md \
@@ -315,6 +348,8 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 | Custom style replication (Playwright computed styles + structural hints) | ✅ Shipped |
 | Obsidian WikiLink support | ✅ Shipped |
 | YAML frontmatter auto-extraction | ✅ Shipped |
+| Translation & Repost mode (agent-native full-article translation) | ✅ Shipped |
+| Mobile-friendly code blocks (font reduction + smart line wrapping) | ✅ Shipped |
 | Style quality refinement (classic trio polish) | 🚧 In Progress |
 | Parallel image upload | 📋 Planned |
 | Template system for recurring formats | 📋 Planned |
