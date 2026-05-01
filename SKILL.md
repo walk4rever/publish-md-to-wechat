@@ -47,6 +47,25 @@ if the script explicitly fails with an auth error.
 
 ---
 
+## Phase 1B: Translation & Repost (转载/全文翻译)
+
+Trigger when user says: "全文翻译"、"转载"、"translate"、"repost"、or the source article is in English.
+
+**Do not summarize or adapt — translate the full article faithfully.**
+
+1. Read the source Markdown file completely.
+2. Translate the entire content to Chinese, preserving:
+   - All Markdown structure (headings, lists, code blocks, blockquotes, images)
+   - Original section order and hierarchy
+   - Technical terms in English where standard (e.g. agent, token, context window)
+   - Author attribution — add a frontmatter note: `> 本文译自：[原文标题]，作者：[Author]`
+3. Save the translated content to a temp file (e.g. `/tmp/translated_article.md`).
+4. Proceed to Phase 2 with the translated file.
+
+**Do not ask for confirmation before translating** — if the user said "全文翻译/转载", just do it.
+
+---
+
 ## Phase 2: Read the Article & Select a Style
 
 Read the Markdown file to understand the content's tone. Then pick a style.
