@@ -1488,6 +1488,7 @@ def main():
     parser.add_argument("--style", default="swiss",
                         help="Style preset: swiss, terminal, bold, botanical, notebook, cyber, voltage, geometry, editorial, ink, or custom-xxx (default: swiss)")
     parser.add_argument("--title", help="Article Title (optional, auto-detect from MD)")
+    parser.add_argument("--author", help="Author name override (max 8 bytes, overrides frontmatter)")
     parser.add_argument("--verify-ssl", dest="verify_ssl", action="store_true",
                        help="Enable SSL verification (default: enabled)")
     parser.add_argument("--no-verify-ssl", dest="verify_ssl", action="store_false",
@@ -1549,6 +1550,9 @@ def main():
             raw_author = ", ".join(str(a) for a in raw_author)
         raw_author = str(raw_author).strip().strip("'\"")
         raw_author = re.sub(r'\[\[([^\]]+)\]\]', r'\1', raw_author)
+        # --author flag overrides frontmatter
+        if args.author:
+            raw_author = args.author.strip()
         # Truncate to 8 bytes safely (avoid splitting multibyte chars)
         encoded = raw_author.encode('utf-8')[:8]
         fm_author = encoded.decode('utf-8', errors='ignore').strip()
