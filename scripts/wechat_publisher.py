@@ -1243,9 +1243,13 @@ class WeChatPublisher:
             fm_items = []
             # We filter some internal or huge fields, only show relevant ones
             display_keys = ['source', 'author', 'published', 'tags', 'description']
+            # Fallbacks: alias fields commonly used in Vault articles
+            aliases = {'published': 'date', 'description': 'excerpt'}
             for k in display_keys:
-                if k in frontmatter:
-                    v = frontmatter[k]
+                resolved_k = k if k in frontmatter else aliases.get(k, k)
+                if resolved_k not in frontmatter:
+                    continue
+                v = frontmatter[resolved_k]
                     # Handle lists (like tags or authors)
                     if isinstance(v, list):
                         v = ", ".join(map(str, v))

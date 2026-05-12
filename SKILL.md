@@ -77,6 +77,51 @@ if the script explicitly fails with an auth error.
 
 ---
 
+## Phase 1C: Frontmatter Adaptation (Vault Articles)
+
+**Before publishing any Vault article, verify the frontmatter contains the fields WeChat publisher
+needs to render the article header correctly.**
+
+The publisher renders a metadata block at the top of every article using these specific keys:
+
+| WeChat key | Renders as | Common Vault alias | Action |
+|---|---|---|---|
+| `author` | 作者 | same | ✅ usually present |
+| `published` | 发布日期 | `date` | ⚠️ add `published:` if only `date:` exists |
+| `tags` | 标签列表 | — | ⚠️ add if missing |
+| `description` | 摘要 | `excerpt` | ⚠️ add `description:` if only `excerpt:` exists |
+| `source` | 来源 | — | ⚠️ add `source: AI-DIVE · ai.air7.fun` for Vault articles |
+
+**Script fallbacks (built-in):** The publisher script automatically falls back:
+- `published` → `date` if `published` is absent
+- `description` → `excerpt` if `description` is absent
+
+So these alias pairs do not need to be manually patched before publishing. The remaining three
+(`author`, `tags`, `source`) have no automatic alias — add them to frontmatter if missing.
+
+**Minimal complete frontmatter for a Vault → WeChat article:**
+```yaml
+---
+title: 文章标题
+slug: type-YYYY-MM-DD-topic          # ai-dive API
+date: YYYY-MM-DD                     # ai-dive API
+published: YYYY-MM-DD                # WeChat header display
+type: analysis                       # ai-dive API
+author: Rafa
+tags: [标签1,标签2, 标签3]           # WeChat header display
+excerpt: 摘要文字                     # ai-dive API
+description: 摘要文字                 # WeChat header display (same content as excerpt)
+source: AI-DIVE · ai.air7.fun       # WeChat header display
+og_image: https://...               # ai-dive cover (fill after upload)
+cover: assets/topic-cover.png       # local preview
+---
+```
+
+**Note:** `date` and `published` carry the same value; `excerpt` and `description` carry the same
+content — the two systems use different keys for the same concept.
+
+---
+
 ## Phase 2: Read the Article & Select a Style
 
 Read the Markdown file to understand the content's tone. Then pick a style.
