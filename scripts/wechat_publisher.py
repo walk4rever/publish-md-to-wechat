@@ -104,7 +104,7 @@ def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
             try:
                 import yaml as _yaml
                 fm = _yaml.safe_load(fm_match.group(1)) or {}
-                title = str(fm.get("title", "")).strip() or None
+                title = str(fm.get("wechat", fm.get("title", ""))).strip() or None
             except Exception:
                 pass
 
@@ -314,6 +314,45 @@ def _detect_ascii_table(code: str):
     return segments if has_table else None
 
 
+_CJK_PATTERN = re.compile(r'[一-鿿]')
+
+
+def _looks_like_math(latex: str) -> bool:
+    """Reject inline $...$ spans that are more likely currency mentions or
+    stray dollar signs than real LaTeX. This corpus mixes Chinese prose with
+    $-denominated amounts (e.g. "从 $100 万涨到 $200 万"), where a naive
+    paired-$ regex would otherwise capture the prose between two unrelated
+    amounts as a bogus formula.
+    """
+    stripped = latex.strip()
+    if not stripped or len(stripped) > 200:
+        return False
+    if _CJK_PATTERN.search(stripped):
+        return False
+    return True
+
+
+def _latex_to_image_html(latex: str, display: bool) -> str:
+    """Render a LaTeX formula to an <img> tag via the CodeCogs rendering API.
+
+    WeChat article HTML can't run JS or load external stylesheets, so
+    formulas can't be rendered client-side (KaTeX/MathJax). Instead we
+    render each formula to a PNG and let it flow through the existing
+    external-image download/upload pipeline — the same mechanism already
+    used for Mermaid diagrams (see block_code below).
+    """
+    dpi = 300 if display else 180
+    raw = f"\\dpi{{{dpi}}}{latex.strip()}"
+    encoded = urllib.parse.quote(raw, safe='')
+    img_url = f"https://latex.codecogs.com/png.image?{encoded}"
+    if display:
+        return (f'<section style="text-align: center; margin: 20px 0;">'
+                f'<img src="{img_url}" alt="formula" '
+                f'style="max-width: 90%; height: auto;" /></section>\n')
+    return (f'<img src="{img_url}" alt="formula" '
+            f'style="height: 1.1em; vertical-align: -0.2em; margin: 0 1px;" />')
+
+
 class WeChatRenderer(mistune.HTMLRenderer):
     """Custom renderer for WeChat compatible HTML with inline styles."""
     
@@ -384,15 +423,200 @@ class WeChatRenderer(mistune.HTMLRenderer):
         return f'<h{level} style="margin: 20px 0; font-weight: bold;">{text}</h{level}>\n'
 
     def paragraph(self, text):
+        # If the text is already wrapped in a block-level section (like an image)
+        stripped = text.strip()
+        if stripped.startswith('<section') and stripped.endswith('</section>'):
+            return text + '\n'
+
         s = self.style
+        
+        # Check if the entire paragraph is an italicized quote (starts with <em or <strong><em)
+        is_quote = False
+        inner_text = ""
+        if stripped.startswith('<em') and stripped.endswith('</em>'):
+            tag_end = stripped.find('>')
+            if tag_end != -1:
+                is_quote = True
+                inner_text = stripped[tag_end + 1:-5]
+        elif stripped.startswith('<strong><em') and stripped.endswith('</em></strong>'):
+            tag_end = stripped.find('>', 8)
+            if tag_end != -1:
+                is_quote = True
+                inner_text = f"<strong>{stripped[tag_end + 1:-14]}</strong>"
+        elif stripped.startswith('<em') and stripped.endswith('</strong>'):
+            # Handles <em><strong>...</strong></em> parsed order
+            tag_end = stripped.find('>')
+            if tag_end != -1:
+                is_quote = True
+                inner_text = stripped[tag_end + 1:-9]
+
+        if is_quote:
+            # Render as a beautiful styled quote box instead of italic text
+            if self.style_name == "swiss":
+                # Swiss style quote: clean, light gray background, left red border, normal text style
+                return (f'<section style="margin: 22px 0; padding: 16px 20px; background-color: #f5f5f5; '
+                        f'border-left: 3px solid {s["accent"]}; border-radius: 0 4px 4px 0; '
+                        f'color: #555555; font-size: 15px; line-height: 1.75; font-style: normal;">'
+                        f'{inner_text}</section>\n')
+            else:
+                bg = "#f9f9f9" if s["bg"] == "#ffffff" else "rgba(255,255,255,0.03)"
+                border_color = s["accent"]
+                return (f'<section style="margin: 22px 0; padding: 16px 20px; background-color: {bg}; '
+                        f'border-left: 3px solid {border_color}; border-radius: 0 4px 4px 0; '
+                        f'color: {s["secondary"]}; font-size: 15px; line-height: 1.75; font-style: normal;">'
+                        f'{inner_text}</section>\n')
+
         line_height = "1.75" if self.style_name == "swiss" else "1.8"
         font_size = "15px" if self.style_name == "swiss" else "16px"
         margin = "16px 0" if self.style_name == "swiss" else "15px 0"
         font_family = f' font-family: {s["font"]};' if self.style_name.startswith("custom-") and s.get("font") else ""
         return f'<p style="font-size: {font_size}; line-height: {line_height}; margin: {margin}; color: {s["text"]};{font_family}">{text}</p>\n'
 
+    def emphasis(self, text):
+        s = self.style
+        # In Chinese, italics are hard to read; style with accent color & medium weight
+        return f'<em style="font-style: normal; color: {s["accent"]}; font-weight: bold;">{text}</em>'
+
     def block_quote(self, text):
         s = self.style
+
+        # Check for Obsidian-style callouts (e.g. > [!TIP] Title or > [!NOTE]- Title)
+        callout_match = re.search(r'\[\!(TIP|IMPORTANT|NOTE|WARNING|CAUTION|OVERVIEW|FACTS|TIPS|VALUE|INVERSE|TAKEAWAY)\][-+]?\s*(.*?)((?:<br\s*/?>)|\n|(?:</p>))', text, re.DOTALL | re.IGNORECASE)
+        if callout_match:
+            callout_type = callout_match.group(1).upper()
+            header_text = callout_match.group(2).strip()
+            
+            # Extract title
+            title_match = re.search(r'[（\(](.*?)[）\)]', header_text)
+            title = title_match.group(1) if title_match else header_text
+            if not title:
+                # Fallback titles based on type
+                title_map = {
+                    "OVERVIEW": "背景概览",
+                    "TIPS": "知识科普",
+                    "TIP": "知识科普",
+                    "FACTS": "时空复盘",
+                    "IMPORTANT": "时空复盘",
+                    "VALUE": "价值视角",
+                    "INVERSE": "反向思考",
+                    "WARNING": "反向思考",
+                    "TAKEAWAY": "实操启示",
+                    "CAUTION": "实操启示"
+                }
+                title = title_map.get(callout_type, "评注")
+            
+            # Clean body
+            idx = text.find(callout_match.group(0))
+            if callout_match.group(3) == "</p>":
+                p_start = text.rfind("<p", 0, idx)
+                if p_start != -1:
+                    cleaned_body = text[:p_start] + text[callout_match.end():]
+                else:
+                    cleaned_body = text[:idx] + text[callout_match.end():]
+            else:
+                cleaned_body = text[:idx] + text[callout_match.end():]
+            
+            # 6-Layer Callout Templates for Swiss Style
+            overview_template = """<section style="margin: 24px 0; border: 1.5px solid #777777; border-top: 6px solid #777777; padding: 18px; background-color: #fafafa; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #777777; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #777777; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Overview</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            tips_template = """<section style="margin: 24px 0; border: 1.5px solid #1e88e5; border-left: 6px solid #1e88e5; padding: 18px; background-color: #f7fbfe; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #1e88e5; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #1e88e5; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Tips</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            facts_template = """<section style="margin: 24px 0; border: 1.5px solid #2e7d32; border-top: 6px solid #2e7d32; padding: 18px; background-color: #f5faf5; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #2e7d32; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #2e7d32; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Facts</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            value_template = """<section style="margin: 24px 0; border: 1.5px solid #5e35b1; border-left: 6px solid #5e35b1; padding: 18px; background-color: #faf7fc; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #5e35b1; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #5e35b1; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Value</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            inverse_template = """<section style="margin: 24px 0; border: 1.5px solid #e65100; border-top: 6px solid #e65100; padding: 18px; background-color: #fffaf4; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e65100; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #e65100; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Inverse</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            takeaway_template = """<section style="margin: 24px 0; border: 1.5px solid #00796b; border-top: 6px solid #00796b; padding: 18px; background-color: #f2faf9; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #00796b; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #00796b; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Takeaway</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            # Compatibility / fallback templates
+            red_template = """<section style="margin: 24px 0; border: 1.5px solid #e62e2e; border-top: 6px solid #e62e2e; padding: 18px; background-color: #fafafa; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e62e2e; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #e62e2e; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">2026 RETROSPECTIVE / 跨时空复盘</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            black_template = """<section style="margin: 24px 0; border: 1.5px solid #1a1a1a; border-left: 6px solid #1a1a1a; padding: 18px; background-color: #fcfcfc; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #1a1a1a; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #1a1a1a; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">BUFFETT VIEW / 巴菲特部落视角</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
+            if callout_type == "OVERVIEW":
+                template = overview_template
+            elif callout_type in ["TIPS", "TIP"]:
+                template = tips_template
+            elif callout_type in ["FACTS", "IMPORTANT"]:
+                template = facts_template
+            elif callout_type == "VALUE":
+                template = value_template
+            elif callout_type in ["INVERSE", "WARNING"]:
+                template = inverse_template
+            elif callout_type in ["TAKEAWAY", "CAUTION"]:
+                template = takeaway_template
+            elif callout_type == "NOTE":
+                template = black_template
+            else:
+                template = black_template
+                
+            content_html = cleaned_body.strip()
+            return template.format(title=title, content=content_html)
 
         # Custom styles: use extracted structural hints
         if self.style_name.startswith("custom-"):
@@ -1229,7 +1453,29 @@ class WeChatPublisher:
             return f'![{alias_part}](<{path_part}>)'
             
         processed_md = re.sub(r'!\[\[([^|\]]+)(?:\|([^\]]+))?\]\]', obsidian_repl, content_body)
-        
+
+        # 2b. Pre-process: Render LaTeX math ($$...$$ / $...$) to images via placeholders.
+        # Formula source is full of _, \, *, {} that the Markdown parser would otherwise
+        # mangle, so we swap it out before mistune ever sees it — same technique as the
+        # table placeholder logic below.
+        math_cache: Dict[str, str] = {}
+
+        def _block_math_replacer(match):
+            placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
+            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=True)
+            return placeholder_id
+
+        processed_md = re.sub(r'\$\$([\s\S]+?)\$\$', _block_math_replacer, processed_md)
+
+        def _inline_math_replacer(match):
+            if not _looks_like_math(match.group(1)):
+                return match.group(0)
+            placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
+            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=False)
+            return placeholder_id
+
+        processed_md = re.sub(r'(?<!\$)\$([^\$\n]+?)\$(?!\$)', _inline_math_replacer, processed_md)
+
         # Validate style
         if style_name not in self.STYLES:
             logger.warning(f"Unknown style '{style_name}', using 'swiss'")
@@ -1239,7 +1485,7 @@ class WeChatPublisher:
 
         # Generate Frontmatter HTML
         fm_html = ""
-        if frontmatter:
+        if frontmatter and not getattr(self, 'no_frontmatter_box', False):
             fm_items = []
             # We filter some internal or huge fields, only show relevant ones
             display_keys = ['source', 'author', 'published', 'tags', 'description']
@@ -1250,12 +1496,12 @@ class WeChatPublisher:
                 if resolved_k not in frontmatter:
                     continue
                 v = frontmatter[resolved_k]
-                    # Handle lists (like tags or authors)
-                    if isinstance(v, list):
-                        v = ", ".join(map(str, v))
-                    # Strip Obsidian [[wikilink]] syntax
-                    v = re.sub(r'\[\[([^\]]+)\]\]', r'\1', str(v))
-                    fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]}; text-transform: uppercase;">{k}:</strong> {v}</div>')
+                # Handle lists (like tags or authors)
+                if isinstance(v, list):
+                    v = ", ".join(map(str, v))
+                # Strip Obsidian [[wikilink]] syntax
+                v = re.sub(r'\[\[([^\]]+)\]\]', r'\1', str(v))
+                fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]}; text-transform: uppercase;">{k}:</strong> {v}</div>')
             
             if fm_items:
                 fm_html = (f'<section style="margin: 0 0 30px; padding: 20px; border: 1px solid #eeeeee; '
@@ -1276,7 +1522,7 @@ class WeChatPublisher:
                 # Store HTML in cache and return a safe placeholder
                 placeholder_id = f"[[WECHAT_TABLE_{len(table_cache)}]]"
                 table_cache[placeholder_id] = html_table
-                return quote_content.replace(raw_table, "\n" + placeholder_id + "\n")
+                return quote_content.replace(raw_table, "> " + placeholder_id + "\n")
             return quote_content
 
         # Apply placeholder logic
@@ -1295,10 +1541,22 @@ class WeChatPublisher:
         # Post-process: Replace placeholders with real HTML
         for p_id, p_html in table_cache.items():
             # Mistune might wrap the placeholder in <p> tags, so we replace carefully
+            p_id_escaped = re.escape(p_id)
+            main_html = re.sub(r'<p[^>]*>\s*' + p_id_escaped + r'\s*</p>', p_html, main_html)
             main_html = main_html.replace(p_id, p_html)
             # Also handle if it was escaped (though unlikely inside placeholders)
-            main_html = main_html.replace(p_id.replace('[', '&#91;').replace(']', '&#93;'), p_html)
-        
+            escaped_p_id = p_id.replace('[', '&#91;').replace(']', '&#93;')
+            main_html = re.sub(r'<p[^>]*>\s*' + re.escape(escaped_p_id) + r'\s*</p>', p_html, main_html)
+            main_html = main_html.replace(escaped_p_id, p_html)
+
+        for p_id, p_html in math_cache.items():
+            p_id_escaped = re.escape(p_id)
+            main_html = re.sub(r'<p[^>]*>\s*' + p_id_escaped + r'\s*</p>', p_html, main_html)
+            main_html = main_html.replace(p_id, p_html)
+            escaped_p_id = p_id.replace('[', '&#91;').replace(']', '&#93;')
+            main_html = re.sub(r'<p[^>]*>\s*' + re.escape(escaped_p_id) + r'\s*</p>', p_html, main_html)
+            main_html = main_html.replace(escaped_p_id, p_html)
+
         # 2. Post-process: Upload local images and replace URLs
         img_tags = re.findall(r'<img src="(.*?)"', main_html)
         
@@ -1413,7 +1671,7 @@ class WeChatPublisher:
         
         return header + fm_html + main_html + footer
 
-    def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "") -> dict:
+    def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "", content_source_url: str = "") -> dict:
         """Create a draft in WeChat Official Account."""
         logger.info(f"Creating draft: {title}")
 
@@ -1427,20 +1685,34 @@ class WeChatPublisher:
         if not html_content:
             raise DraftError("HTML content cannot be empty")
 
+        # Debug: Write the exact html_content about to be sent to WeChat
+        try:
+            debug_path = "/Users/rafael/R129/Vault/_temp/wechat_sent_payload.html"
+            os.makedirs(os.path.dirname(debug_path), exist_ok=True)
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            logger.info(f"Debug: Wrote final HTML payload to {debug_path}")
+        except Exception as e:
+            logger.warning(f"Failed to write debug payload: {e}")
+
         if not thumb_id:
             raise DraftError("Thumbnail media_id is required")
 
         url = f"https://api.weixin.qq.com/cgi-bin/draft/add?access_token={self.access_token}"
 
+        article_data = {
+            "title": title,
+            "author": author or "Agent",
+            "digest": digest or "Automatically published from Markdown via Agent Skill.",
+            "content": html_content,
+            "thumb_media_id": thumb_id,
+            "need_open_comment": 1
+        }
+        if content_source_url:
+            article_data["content_source_url"] = content_source_url
+
         data = {
-            "articles": [{
-                "title": title,
-                "author": author or "Agent",
-                "digest": digest or "Automatically published from Markdown via Agent Skill.",
-                "content": html_content,
-                "thumb_media_id": thumb_id,
-                "need_open_comment": 1
-            }]
+            "articles": [article_data]
         }
         
         try:
@@ -1503,6 +1775,8 @@ def main():
     parser.add_argument("--validate", action="store_true",
                        help="Only validate inputs and local images; no rendering output required")
     parser.add_argument("--out-html", help="Write rendered HTML to a file (dry-run only)")
+    parser.add_argument("--no-frontmatter-box", action="store_true",
+                       help="Do not render the frontmatter metadata box in the article body")
     parser.add_argument("-v", "--verbose", action="store_true", 
                        help="Enable verbose debug logging")
     
@@ -1562,6 +1836,9 @@ def main():
         fm_author = encoded.decode('utf-8', errors='ignore').strip()
 
         fm_digest = str(frontmatter.get("description", "") or frontmatter.get("digest", "") or frontmatter.get("summary", "")).strip()
+        # Truncate digest to 120 bytes safely for WeChat API limit (Error 45004)
+        encoded_digest = fm_digest.encode('utf-8')[:120]
+        fm_digest = encoded_digest.decode('utf-8', errors='ignore').strip()
         if fm_author:
             logger.info(f"Frontmatter author: {fm_author}")
         if fm_digest:
@@ -1621,6 +1898,7 @@ def main():
         
         logger.info("Initializing WeChat publisher...")
         publisher = WeChatPublisher(app_id, app_secret, verify_ssl=args.verify_ssl, enable_network=enable_network)
+        publisher.no_frontmatter_box = args.no_frontmatter_box
         
         html = publisher.convert_md_to_html(
             md_content,
@@ -1649,8 +1927,9 @@ def main():
             logger.info("✓ Dry-run complete (no WeChat API calls made)")
             return 0
         
+        fm_source = str(frontmatter.get("source", "") or "").strip()
         thumb_id = _with_retry(lambda: publisher.upload_thumb(thumb_path), context="upload_thumb")
-        result = _with_retry(lambda: publisher.create_draft(title, html, thumb_id, author=fm_author, digest=fm_digest), context="create_draft")
+        result = _with_retry(lambda: publisher.create_draft(title, html, thumb_id, author=fm_author, digest=fm_digest, content_source_url=fm_source), context="create_draft")
         
         # Success
         logger.info("=" * 50)
