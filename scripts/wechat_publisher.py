@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.8.6"
+__version__ = "0.8.7"
 
 import urllib.request
 import urllib.error
@@ -978,6 +978,48 @@ def _convert_to_wechat_format(path: str) -> str:
         return path
 
 
+def _centered_crop_fraction(width: int, height: int, target_ratio: float) -> str:
+    """Largest centered crop box matching target_ratio (w/h), as WeChat's
+    normalized 'X1_Y1_X2_Y2' string (image top-left = 0,0, bottom-right = 1,1).
+    """
+    current_ratio = width / height
+    if current_ratio > target_ratio:
+        # Wider than target: crop left/right, keep full height.
+        crop_w = height * target_ratio
+        x1 = (width - crop_w) / 2 / width
+        y1 = 0.0
+        x2 = 1 - x1
+        y2 = 1.0
+    else:
+        # Taller than (or equal to) target: crop top/bottom, keep full width.
+        crop_h = width / target_ratio
+        x1 = 0.0
+        y1 = (height - crop_h) / 2 / height
+        x2 = 1.0
+        y2 = 1 - y1
+    return f"{x1:.6f}_{y1:.6f}_{x2:.6f}_{y2:.6f}"
+
+
+def compute_wechat_cover_crops(image_path: str) -> "tuple[Optional[str], Optional[str]]":
+    """Compute the two cover crops WeChat expects for a draft's thumbnail:
+    a 2.35:1 box (list/feed cover) and a 1:1 box (chat/Moments share card),
+    both centered crops of the same uploaded image. Without these, WeChat
+    leaves the second crop unset and prompts for manual cropping in the web UI.
+    """
+    try:
+        from PIL import Image
+        with Image.open(image_path) as img:
+            width, height = img.size
+    except Exception as e:
+        logger.warning(f"Failed to read cover dimensions for crop calculation: {e}")
+        return None, None
+
+    if width <= 0 or height <= 0:
+        return None, None
+
+    return _centered_crop_fraction(width, height, 2.35), _centered_crop_fraction(width, height, 1.0)
+
+
 def _ensure_supported_image(path: str) -> None:
     if not os.path.exists(path):
         raise UploadError(f"Image not found: {path}")
@@ -1671,7 +1713,7 @@ class WeChatPublisher:
         
         return header + fm_html + main_html + footer
 
-    def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "", content_source_url: str = "") -> dict:
+    def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "", content_source_url: str = "", pic_crop_235_1: Optional[str] = None, pic_crop_1_1: Optional[str] = None) -> dict:
         """Create a draft in WeChat Official Account."""
         logger.info(f"Creating draft: {title}")
 
@@ -1710,6 +1752,10 @@ class WeChatPublisher:
         }
         if content_source_url:
             article_data["content_source_url"] = content_source_url
+        if pic_crop_235_1:
+            article_data["pic_crop_235_1"] = pic_crop_235_1
+        if pic_crop_1_1:
+            article_data["pic_crop_1_1"] = pic_crop_1_1
 
         data = {
             "articles": [article_data]
@@ -1929,7 +1975,11 @@ def main():
         
         fm_source = str(frontmatter.get("source", "") or "").strip()
         thumb_id = _with_retry(lambda: publisher.upload_thumb(thumb_path), context="upload_thumb")
-        result = _with_retry(lambda: publisher.create_draft(title, html, thumb_id, author=fm_author, digest=fm_digest, content_source_url=fm_source), context="create_draft")
+        crop_235_1, crop_1_1 = compute_wechat_cover_crops(thumb_path)
+        result = _with_retry(lambda: publisher.create_draft(
+            title, html, thumb_id, author=fm_author, digest=fm_digest, content_source_url=fm_source,
+            pic_crop_235_1=crop_235_1, pic_crop_1_1=crop_1_1
+        ), context="create_draft")
         
         # Success
         logger.info("=" * 50)
