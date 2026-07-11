@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.8.7"
+__version__ = "0.8.8"
 
 import urllib.request
 import urllib.error
@@ -27,7 +27,7 @@ from typing import Optional, Any, Dict
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
-from styles import BUILTIN_STYLES
+from styles import BUILTIN_STYLES, is_dark_color
 
 try:
     from dotenv import load_dotenv
@@ -332,7 +332,7 @@ def _looks_like_math(latex: str) -> bool:
     return True
 
 
-def _latex_to_image_html(latex: str, display: bool) -> str:
+def _latex_to_image_html(latex: str, display: bool, dark_bg: bool = False) -> str:
     """Render a LaTeX formula to an <img> tag via the CodeCogs rendering API.
 
     WeChat article HTML can't run JS or load external stylesheets, so
@@ -340,9 +340,13 @@ def _latex_to_image_html(latex: str, display: bool) -> str:
     render each formula to a PNG and let it flow through the existing
     external-image download/upload pipeline — the same mechanism already
     used for Mermaid diagrams (see block_code below).
+
+    CodeCogs renders black text on a transparent background by default,
+    which is invisible on dark styles — force white text in that case.
     """
     dpi = 300 if display else 180
-    raw = f"\\dpi{{{dpi}}}{latex.strip()}"
+    color_prefix = "\\color{White}" if dark_bg else ""
+    raw = f"\\dpi{{{dpi}}}{color_prefix}{latex.strip()}"
     encoded = urllib.parse.quote(raw, safe='')
     img_url = f"https://latex.codecogs.com/png.image?{encoded}"
     if display:
@@ -1496,15 +1500,25 @@ class WeChatPublisher:
             
         processed_md = re.sub(r'!\[\[([^|\]]+)(?:\|([^\]]+))?\]\]', obsidian_repl, content_body)
 
+        # Validate style
+        if style_name not in self.STYLES:
+            logger.warning(f"Unknown style '{style_name}', using 'swiss'")
+            style_name = "swiss"
+
+        style = self.STYLES[style_name]
+
         # 2b. Pre-process: Render LaTeX math ($$...$$ / $...$) to images via placeholders.
         # Formula source is full of _, \, *, {} that the Markdown parser would otherwise
         # mangle, so we swap it out before mistune ever sees it — same technique as the
-        # table placeholder logic below.
+        # table placeholder logic below. CodeCogs renders black text on a transparent
+        # background by default, so on dark styles we need white formula text or the
+        # formulas are invisible.
+        dark_formula_bg = is_dark_color(style["bg"])
         math_cache: Dict[str, str] = {}
 
         def _block_math_replacer(match):
             placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
-            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=True)
+            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=True, dark_bg=dark_formula_bg)
             return placeholder_id
 
         processed_md = re.sub(r'\$\$([\s\S]+?)\$\$', _block_math_replacer, processed_md)
@@ -1513,17 +1527,10 @@ class WeChatPublisher:
             if not _looks_like_math(match.group(1)):
                 return match.group(0)
             placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
-            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=False)
+            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=False, dark_bg=dark_formula_bg)
             return placeholder_id
 
         processed_md = re.sub(r'(?<!\$)\$([^\$\n]+?)\$(?!\$)', _inline_math_replacer, processed_md)
-
-        # Validate style
-        if style_name not in self.STYLES:
-            logger.warning(f"Unknown style '{style_name}', using 'swiss'")
-            style_name = "swiss"
-        
-        style = self.STYLES[style_name]
 
         # Generate Frontmatter HTML
         fm_html = ""
