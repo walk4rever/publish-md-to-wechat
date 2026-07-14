@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.9.0"
+__version__ = "0.8.9"
 
 import urllib.request
 import urllib.error
