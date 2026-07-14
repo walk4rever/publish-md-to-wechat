@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.8.8"
+__version__ = "0.9.0"
 
 import urllib.request
 import urllib.error
@@ -17,10 +17,11 @@ import argparse
 import logging
 import urllib.parse
 import hashlib
+import subprocess
 import time
 import yaml
 from datetime import datetime
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List, Tuple
 
 # Ensure scripts/ directory is on sys.path so `from styles import ...` works
 # regardless of which directory the user invokes the script from.
@@ -332,6 +333,44 @@ def _looks_like_math(latex: str) -> bool:
     return True
 
 
+_INLINE_FORMULA_DPI = 180
+_DISPLAY_FORMULA_DPI = 300
+
+# CodeCogs crops its PNGs tightly to the ink (verified empirically — no
+# baked-in padding), so at a fixed DPI a formula's natural pixel height is
+# already proportional to its real LaTeX-typeset size: a bare "x" comes out
+# short, "\frac{a}{b}" comes out tall. Scaling every formula to the SAME
+# CSS height (as this used to do) destroys that proportionality — simple
+# formulas get blown up, fractions get squashed into illegible slivers.
+# Applying one constant scale factor to each formula's own natural size
+# instead keeps glyphs consistent with surrounding text while letting
+# genuinely taller constructs (fractions, stacked scripts) keep their
+# extra vertical room, matching normal inline math typesetting.
+_INLINE_FORMULA_SCALE = 0.6
+
+
+def _is_inline_formula_url(url: str) -> bool:
+    """True if `url` is a CodeCogs image rendered at the inline (not display) DPI."""
+    return "latex.codecogs.com" in url and f"dpi%7B{_INLINE_FORMULA_DPI}%7D" in url
+
+
+def _inline_formula_style(path: str) -> Optional[str]:
+    """CSS style for an inline formula <img>, sized from its real pixel
+    dimensions (see _INLINE_FORMULA_SCALE). Returns None if the image can't
+    be measured, so the caller can fall back to the placeholder style.
+    """
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            w, h = img.size
+    except Exception as e:
+        logger.warning(f"Failed to measure formula image {path}: {e}")
+        return None
+    css_w = max(1, round(w * _INLINE_FORMULA_SCALE))
+    css_h = max(1, round(h * _INLINE_FORMULA_SCALE))
+    return f"width: {css_w}px; height: {css_h}px; vertical-align: -0.15em; margin: 0 1px;"
+
+
 def _latex_to_image_html(latex: str, display: bool, dark_bg: bool = False) -> str:
     """Render a LaTeX formula to an <img> tag via the CodeCogs rendering API.
 
@@ -339,12 +378,14 @@ def _latex_to_image_html(latex: str, display: bool, dark_bg: bool = False) -> st
     formulas can't be rendered client-side (KaTeX/MathJax). Instead we
     render each formula to a PNG and let it flow through the existing
     external-image download/upload pipeline — the same mechanism already
-    used for Mermaid diagrams (see block_code below).
+    used for Mermaid diagrams (see block_code below). The placeholder style
+    below is a fallback; convert_md_to_html replaces it with pixel-accurate
+    sizing once the image has been downloaded (see _inline_formula_style).
 
     CodeCogs renders black text on a transparent background by default,
     which is invisible on dark styles — force white text in that case.
     """
-    dpi = 300 if display else 180
+    dpi = _DISPLAY_FORMULA_DPI if display else _INLINE_FORMULA_DPI
     color_prefix = "\\color{White}" if dark_bg else ""
     raw = f"\\dpi{{{dpi}}}{color_prefix}{latex.strip()}"
     encoded = urllib.parse.quote(raw, safe='')
@@ -355,6 +396,49 @@ def _latex_to_image_html(latex: str, display: bool, dark_bg: bool = False) -> st
                 f'style="max-width: 90%; height: auto;" /></section>\n')
     return (f'<img src="{img_url}" alt="formula" '
             f'style="height: 1.1em; vertical-align: -0.2em; margin: 0 1px;" />')
+
+
+_RENDER_FORMULAS_JS = os.path.join(_script_dir, "render_formulas.js")
+
+
+def _render_formulas_svg(items: List[Tuple[str, str, bool]]) -> Dict[str, str]:
+    """Batch-render (placeholder_id, latex, display) formulas to inline SVG via
+    a MathJax Node subprocess (see render_formulas.js). Preferred over the
+    CodeCogs image path: MathJax sizes its SVG output in `ex`/`em` units, so
+    formulas match the surrounding text's font size exactly with no manual
+    pixel calibration, and `fill="currentColor"` makes them follow the
+    paragraph's text color automatically (dark styles need no special-casing).
+
+    Returns {placeholder_id: svg_html} only for formulas that rendered
+    successfully. Missing entries (Node unavailable, a single formula erroring,
+    the whole batch timing out) are left for the caller to fall back to
+    _latex_to_image_html — one bad formula shouldn't fail the whole publish.
+    """
+    if not items:
+        return {}
+    payload = [{"id": pid, "latex": latex, "display": display} for pid, latex, display in items]
+    try:
+        proc = subprocess.run(
+            ["node", _RENDER_FORMULAS_JS],
+            input=json.dumps(payload),
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            logger.warning(f"MathJax SVG render failed, falling back to image formulas: {proc.stderr.strip()[:300]}")
+            return {}
+        results = json.loads(proc.stdout)
+    except Exception as e:
+        logger.warning(f"MathJax SVG rendering unavailable, falling back to image formulas: {e}")
+        return {}
+
+    svg_by_id = {}
+    for pid, latex, _display in items:
+        r = results.get(pid)
+        if r and r.get("ok"):
+            svg_by_id[pid] = r["svg"]
+        elif r:
+            logger.warning(f"Formula failed to render as SVG, falling back to image for: {latex[:50]!r}: {r.get('error')}")
+    return svg_by_id
 
 
 class WeChatRenderer(mistune.HTMLRenderer):
@@ -1507,30 +1591,46 @@ class WeChatPublisher:
 
         style = self.STYLES[style_name]
 
-        # 2b. Pre-process: Render LaTeX math ($$...$$ / $...$) to images via placeholders.
+        # 2b. Pre-process: Render LaTeX math ($$...$$ / $...$) to placeholders.
         # Formula source is full of _, \, *, {} that the Markdown parser would otherwise
         # mangle, so we swap it out before mistune ever sees it — same technique as the
-        # table placeholder logic below. CodeCogs renders black text on a transparent
-        # background by default, so on dark styles we need white formula text or the
-        # formulas are invisible.
+        # table placeholder logic below. Formulas are collected first and rendered as a
+        # single MathJax SVG batch (see _render_formulas_svg); any that MathJax can't
+        # handle fall back to the CodeCogs image path, which needs to know up front
+        # whether the background is dark so it can force white formula text.
         dark_formula_bg = is_dark_color(style["bg"])
-        math_cache: Dict[str, str] = {}
+        pending_formulas: List[Tuple[str, str, bool]] = []
 
-        def _block_math_replacer(match):
-            placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
-            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=True, dark_bg=dark_formula_bg)
+        def _block_math_collector(match):
+            placeholder_id = f"[[WECHAT_MATH_{len(pending_formulas)}]]"
+            pending_formulas.append((placeholder_id, match.group(1), True))
             return placeholder_id
 
-        processed_md = re.sub(r'\$\$([\s\S]+?)\$\$', _block_math_replacer, processed_md)
+        processed_md = re.sub(r'\$\$([\s\S]+?)\$\$', _block_math_collector, processed_md)
 
-        def _inline_math_replacer(match):
+        def _inline_math_collector(match):
             if not _looks_like_math(match.group(1)):
                 return match.group(0)
-            placeholder_id = f"[[WECHAT_MATH_{len(math_cache)}]]"
-            math_cache[placeholder_id] = _latex_to_image_html(match.group(1), display=False, dark_bg=dark_formula_bg)
+            placeholder_id = f"[[WECHAT_MATH_{len(pending_formulas)}]]"
+            pending_formulas.append((placeholder_id, match.group(1), False))
             return placeholder_id
 
-        processed_md = re.sub(r'(?<!\$)\$([^\$\n]+?)\$(?!\$)', _inline_math_replacer, processed_md)
+        processed_md = re.sub(r'(?<!\$)\$([^\$\n]+?)\$(?!\$)', _inline_math_collector, processed_md)
+
+        svg_by_id = _render_formulas_svg(pending_formulas)
+        math_cache: Dict[str, str] = {}
+        for placeholder_id, latex, display in pending_formulas:
+            svg = svg_by_id.get(placeholder_id)
+            if svg is not None:
+                if display:
+                    math_cache[placeholder_id] = (
+                        f'<section style="text-align: center; margin: 20px 0; overflow-x: auto; '
+                        f'color: {style["text"]};">{svg}</section>\n'
+                    )
+                else:
+                    math_cache[placeholder_id] = svg
+            else:
+                math_cache[placeholder_id] = _latex_to_image_html(latex, display=display, dark_bg=dark_formula_bg)
 
         # Generate Frontmatter HTML
         fm_html = ""
@@ -1656,6 +1756,17 @@ class WeChatPublisher:
                     logger.info(f"✓ Downloaded to: {found_path}")
                     # Convert unsupported formats (e.g. WebP) to PNG before upload
                     found_path = _convert_to_wechat_format(found_path)
+
+                    # Inline formula images: replace the placeholder style with one
+                    # sized from the image's real dimensions (see _inline_formula_style).
+                    if _is_inline_formula_url(local_path):
+                        new_style = _inline_formula_style(found_path)
+                        if new_style:
+                            main_html = re.sub(
+                                rf'(<img\s[^>]*src="{re.escape(local_path)}"[^>]*style=")[^"]*(")',
+                                lambda m: f'{m.group(1)}{new_style}{m.group(2)}',
+                                main_html,
+                            )
                 except Exception as e:
                     logger.warning(f"Failed to download external image {local_path}: {e}")
                     continue

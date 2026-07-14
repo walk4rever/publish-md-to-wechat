@@ -3,6 +3,7 @@
     "@slidev/cli": "^52.14.2",
     "@slidev/theme-default": "^0.25.0",
     "@slidev/theme-seriph": "^0.25.0",
+    "mathjax-full": "^3.2.1",
     "playwright-chromium": "^1.59.1"
   }
 }

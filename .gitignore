@@ -66,3 +66,4 @@ grading.json
 timing.json
 eval_metadata.json
 .judge-the-code/
+.gstack/
