@@ -33,7 +33,7 @@ class TestHighlightsCallout(unittest.TestCase):
     def test_highlights_falls_back_to_default_title(self):
         html = render("> [!HIGHLIGHTS]\n>\n> 无标题内容")
 
-        self.assertIn("核心看点", html)
+        self.assertIn("高光金句", html)
         self.assertIn("无标题内容", html)
 
     def test_existing_callout_type_still_works(self):

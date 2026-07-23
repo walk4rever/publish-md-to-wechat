@@ -4,7 +4,7 @@ WeChat Official Account Markdown Publisher
 With Error Handling and Logging
 """
 
-__version__ = "0.8.10"
+__version__ = "0.8.11"
 
 import urllib.request
 import urllib.error
@@ -590,7 +590,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
                     "WARNING": "反向思考",
                     "TAKEAWAY": "实操启示",
                     "CAUTION": "实操启示",
-                    "HIGHLIGHTS": "核心看点"
+                    "HIGHLIGHTS": "高光金句"
                 }
                 title = title_map.get(callout_type, "评注")
             
