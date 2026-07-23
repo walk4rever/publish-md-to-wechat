@@ -569,7 +569,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
         s = self.style
 
         # Check for Obsidian-style callouts (e.g. > [!TIP] Title or > [!NOTE]- Title)
-        callout_match = re.search(r'\[\!(TIP|IMPORTANT|NOTE|WARNING|CAUTION|OVERVIEW|FACTS|TIPS|VALUE|INVERSE|TAKEAWAY)\][-+]?\s*(.*?)((?:<br\s*/?>)|\n|(?:</p>))', text, re.DOTALL | re.IGNORECASE)
+        callout_match = re.search(r'\[\!(TIP|IMPORTANT|NOTE|WARNING|CAUTION|OVERVIEW|FACTS|TIPS|VALUE|INVERSE|TAKEAWAY|HIGHLIGHTS)\][-+]?\s*(.*?)((?:<br\s*/?>)|\n|(?:</p>))', text, re.DOTALL | re.IGNORECASE)
         if callout_match:
             callout_type = callout_match.group(1).upper()
             header_text = callout_match.group(2).strip()
@@ -589,7 +589,8 @@ class WeChatRenderer(mistune.HTMLRenderer):
                     "INVERSE": "反向思考",
                     "WARNING": "反向思考",
                     "TAKEAWAY": "实操启示",
-                    "CAUTION": "实操启示"
+                    "CAUTION": "实操启示",
+                    "HIGHLIGHTS": "核心看点"
                 }
                 title = title_map.get(callout_type, "评注")
             
@@ -665,6 +666,16 @@ class WeChatRenderer(mistune.HTMLRenderer):
   </section>
 </section>"""
 
+            highlights_template = """<section style="margin: 24px 0; border: 1.5px solid #d4a017; border-top: 6px solid #d4a017; padding: 18px; background-color: #fdf8ea; box-sizing: border-box;">
+  <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #d4a017; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
+    <span style="font-size: 11px; font-weight: bold; color: #dc2626; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase;">Highlights</span>
+    <span style="font-size: 14px; font-weight: bold; color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;">{title}</span>
+  </section>
+  <section style="font-size: 14px; line-height: 1.7; color: #333333; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; text-align: justify; margin: 0; padding: 0;">
+    {content}
+  </section>
+</section>"""
+
             # Compatibility / fallback templates
             red_template = """<section style="margin: 24px 0; border: 1.5px solid #e62e2e; border-top: 6px solid #e62e2e; padding: 18px; background-color: #fafafa; box-sizing: border-box;">
   <section style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e62e2e; padding-bottom: 6px; margin-bottom: 12px; box-sizing: border-box;">
@@ -686,7 +697,9 @@ class WeChatRenderer(mistune.HTMLRenderer):
   </section>
 </section>"""
 
-            if callout_type == "OVERVIEW":
+            if callout_type == "HIGHLIGHTS":
+                template = highlights_template
+            elif callout_type == "OVERVIEW":
                 template = overview_template
             elif callout_type in ["TIPS", "TIP"]:
                 template = tips_template
