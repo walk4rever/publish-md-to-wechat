@@ -1364,21 +1364,32 @@ class WeChatPublisher:
         self._save_image_cache(cache)
 
     def _get_access_token(self) -> str:
-        """Get WeChat API access token."""
-        url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={self.app_id}&secret={self.app_secret}"
-        
-        logger.debug(f"Requesting access token from: {url.split('?')[0]}")
-        
+        """Get WeChat API access token using the stable token endpoint."""
+        logger.debug("Requesting stable access token from WeChat API")
+
         cached = self._load_cached_access_token()
         if cached:
             logger.debug("Using cached access token")
             return cached
-        
+
+        url = "https://api.weixin.qq.com/cgi-bin/stable_token"
+        payload = json.dumps({
+            "grant_type": "client_credential",
+            "appid": self.app_id,
+            "secret": self.app_secret,
+            "force_refresh": False,
+        }).encode("utf-8")
+
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'WeChatPublisher/1.0'})
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={"Content-Type": "application/json", "User-Agent": "WeChatPublisher/1.0"},
+                method="POST",
+            )
             with urllib.request.urlopen(req, timeout=30, context=self.ssl_context) as response:
                 data = json.loads(response.read().decode())
-                
+
                 if "access_token" in data:
                     expires_in = data.get("expires_in", 7200)
                     logger.debug(f"Access token expires in {expires_in}s")
@@ -1387,11 +1398,11 @@ class WeChatPublisher:
                     except Exception:
                         logger.debug("Failed to write token cache")
                     return data["access_token"]
-                
+
                 # Handle WeChat error codes
                 errcode = data.get("errcode")
                 errmsg = data.get("errmsg", "Unknown error")
-                
+
                 if errcode == 40164:
                     raise AuthError(f"IP not whitelisted. Add your server IP to WeChat console. Error: {errmsg}")
                 elif errcode == 40125:
@@ -1400,7 +1411,7 @@ class WeChatPublisher:
                     raise AuthError(f"Invalid AppID. Please verify in WeChat admin console. Error: {errmsg}")
                 else:
                     raise AuthError(f"Failed to get access token. Error {errcode}: {errmsg}")
-                    
+
         except urllib.error.URLError as e:
             logger.error(f"Network error: {e.reason}")
             raise AuthError(f"Network error while getting access token: {e.reason}")
