@@ -300,7 +300,21 @@ The renderer applies these structural hints when publishing with a custom style.
 | **40164** IP whitelist | Add IP at mp.weixin.qq.com → 设置与开发 → IP白名单 |
 | **40125 / 40013** Invalid credentials | Check `.env` |
 | **45009** Rate limit | Auto-retries; wait if persists |
+| **45166** invalid content (anchor links) | Article contains `href="#anchor"` links (e.g. table of contents). These are auto-stripped by the post-processor since v0.7.0. If you see this on older versions, upgrade. |
 | **SSL errors** | Add `--no-verify-ssl` |
 | **Image not found** | Check filename (case-sensitive), ensure image is in article directory |
 | **Cover failed** | Falls back to `assets/default_thumb.png`; or use `--thumb` |
 | **Missing dependencies** | Run `./install.sh` |
+
+---
+
+## Known WeChat Rendering Constraints
+
+These are platform-level limitations in WeChat's HTML renderer, handled automatically by the post-processor since v0.7.0:
+
+| Constraint | Behaviour | Automatic Fix |
+|------------|-----------|---------------|
+| **`data-src` required on images** | WeChat lazy-loads images using `data-src`. Images with only `src` render as blank. | Post-processor adds `data-src` to every `<img>` after URL upload. |
+| **`<ol>/<li>` whitespace nodes** | Whitespace text nodes between `<li>` tags are rendered as extra blank numbered items. | Post-processor rebuilds the entire `.footnotes` section as flat `<section>` elements with inline numbering. |
+| **Anchor links (`href="#"`) blocked** | Draft API returns `45166` if any `<a href="#...">` is present. | Post-processor unwraps all `#`-prefixed `<a>` tags to plain text. |
+| **Footnote backlinks** | `mistune` inserts a `↩` return link at the end of each footnote which is meaningless in WeChat. | Post-processor removes all `<a class="footnote">` tags and strips residual `↩` characters. |

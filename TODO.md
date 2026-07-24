@@ -1,7 +1,20 @@
 # Publish MD to WeChat — TODO
 
-**Last Updated:** 2026-03-18  
-**Version:** v0.6.0
+**Last Updated:** 2026-07-24  
+**Version:** v0.7.0
+
+---
+
+## ✅ 已修复的微信渲染 Bug (2026-07-24)
+
+本次在发布《情境感知·第一篇》（长文，含图片、脚注、目录锚点）时发现并修复的问题。
+
+| # | 问题 | 根本原因 | 修复方式 | 影响面 |
+|---|------|----------|----------|--------|
+| 1 | **图片全部空白** | 微信懒加载要求 `data-src`，原脚本只写入 `src` | 图片 URL 替换时同时写 `src` 和 `data-src` | **所有文章** |
+| 2 | **脚注堆一起、序号+空行交替** | mistune 未启用 `footnotes` 插件；`<ol>` 内 `<li>` 间的 whitespace 文本节点被微信渲染为空白编号项 | 启用 `footnotes` 插件；BeautifulSoup 后处理将 `.footnotes` 的 `<ol>/<li>` 完全重建为扁平 `<section>` 结构 | **所有带脚注文章** |
+| 3 | **API 报 45166 invalid content** | 文章目录/正文中的锚点链接 `href="#..."` 被微信 Draft API 拒绝 | BeautifulSoup 后处理 unwrap 所有 `href="#"` 开头的 `<a>` 为纯文本 | **含目录/锚点文章** |
+| 4 | **脚注末尾出现 ↩ 字符** | mistune footnotes 插件自动在每条脚注末尾插入返回链接 | BeautifulSoup 后处理 decompose `class="footnote"` 的 `<a>` 标签，清除残留 `↩` 字符 | **所有带脚注文章** |
 
 ---
 

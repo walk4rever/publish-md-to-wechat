@@ -1705,11 +1705,13 @@ class WeChatPublisher:
         renderer = WeChatRenderer(style, style_name)
         markdown = mistune.create_markdown(
             renderer=renderer,
-            plugins=['strikethrough', 'table']
+            plugins=['strikethrough', 'table', 'footnotes']
         )
         
         # Convert content
         main_html = markdown(processed_md)
+        
+
         
         # Post-process: Replace placeholders with real HTML
         for p_id, p_html in table_cache.items():
@@ -1835,7 +1837,7 @@ class WeChatPublisher:
                     if upload_images:
                         wechat_url = _with_retry(lambda p=found_path: self.upload_image(p), context=f"upload_image:{os.path.basename(found_path)}")
                         # Use replace with care, but since it's the exact src attribute value it's safe
-                        main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}"')
+                        main_html = main_html.replace(f'src="{local_path}"', f'src="{wechat_url}" data-src="{wechat_url}"')
                 except Exception as e:
                     logger.warning(f"Failed to upload image {found_path}: {e}")
             else:
@@ -1853,7 +1855,66 @@ class WeChatPublisher:
                      f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
                      f'text-transform: uppercase;">PUBLISHED VIA AIR7.FUN | STYLE: {style_name.upper()}</section></section>')
         
-        return header + fm_html + main_html + footer
+        full_html = header + fm_html + main_html + footer
+        
+        # Post-process: clean up links and enforce data-src for lazy loading in WeChat
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(full_html, 'html.parser')
+            
+            # 1. Remove footnote return links (class="footnote")
+            for a in soup.find_all("a", class_="footnote"):
+                a.decompose()
+                
+            # 2. Unwrap all remaining anchor links (starting with #)
+            for a in soup.find_all("a"):
+                href = a.get("href", "")
+                if href.startswith("#"):
+                    a.unwrap()
+                    
+            # 3. Rebuild footnotes as flat <section> elements to avoid WeChat <ol>/<li> rendering bugs.
+            #    WeChat treats whitespace text nodes between <li> tags as extra blank numbered items.
+            footnotes_section = soup.find(class_="footnotes")
+            if footnotes_section:
+                ol = footnotes_section.find("ol")
+                if ol:
+                    items = ol.find_all("li", recursive=False)
+                    new_html_parts = []
+                    for idx, li in enumerate(items, start=1):
+                        # Remove ↩ return links
+                        for a in li.find_all("a", class_="footnote"):
+                            a.decompose()
+                        # Remove any remaining ↩ chars
+                        for txt in li.find_all(string=True):
+                            if "\u21a9" in txt:
+                                txt.replace_with(txt.replace("\u21a9", ""))
+                        inner = li.decode_contents().strip()
+                        new_html_parts.append(
+                            f'<section style="font-size: 13px; line-height: 1.65; '
+                            f'margin: 0 0 6px 0; color: #666666; display: flex; align-items: flex-start;">'
+                            f'<span style="min-width: 22px; font-weight: bold; color: #999; flex-shrink: 0;">{idx}.</span>'
+                            f'<span style="flex: 1;">{inner}</span>'
+                            f'</section>'
+                        )
+                    replacement_html = (
+                        '<section style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e0e0e0;">'
+                        '<p style="font-size: 11px; letter-spacing: 1px; color: #aaa; '
+                        'text-transform: uppercase; margin: 0 0 12px 0;">NOTES</p>'
+                        + "".join(new_html_parts)
+                        + '</section>'
+                    )
+                    footnotes_section.replace_with(BeautifulSoup(replacement_html, "html.parser"))
+                    
+            # 4. Enforce data-src for all img tags
+            for img in soup.find_all("img"):
+                src = img.get("src", "")
+                if src and not img.get("data-src"):
+                    img["data-src"] = src
+            full_html = str(soup)
+        except Exception as e:
+            logger.warning(f"Failed to post-process HTML with BeautifulSoup: {e}")
+            
+        return full_html
 
     def create_draft(self, title: str, html_content: str, thumb_id: str, author: str = "", digest: str = "", content_source_url: str = "", pic_crop_235_1: Optional[str] = None, pic_crop_1_1: Optional[str] = None) -> dict:
         """Create a draft in WeChat Official Account."""
