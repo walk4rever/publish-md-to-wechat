@@ -957,10 +957,11 @@ class WeChatRenderer(mistune.HTMLRenderer):
         if caption and (is_generic or is_filename or caption.startswith('Pasted image')):
             caption = ""
             
+        caption_html = f'<p style="color: #888; font-size: 13px; margin-top: 10px;">{caption}</p>' if caption else ""
         return (f'<section style="margin: 25px 0; text-align: center;">'
                 f'<img src="{url}" alt="{alt}" style="max-width: 100%; border-radius: 8px; '
                 f'box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: block; margin: 0 auto;">'
-                f'{f"<p style=\"color: #888; font-size: 13px; margin-top: 10px;\">{caption}</p>" if caption else ""}'
+                f'{caption_html}'
                 f'</section>\n')
 
 # ============================================================
@@ -1160,7 +1161,7 @@ def _format_wechat_error(errcode: Optional[int], errmsg: Optional[str]) -> str:
     return f"WeChat API Error {code}: {msg}" + (f" | Hint: {hint}" if hint else "")
 
 
-def _raise_if_wechat_error(data: dict, exc_cls: type[WeChatPublisherError], context: str) -> None:
+def _raise_if_wechat_error(data: dict, exc_cls: type["WeChatPublisherError"], context: str) -> None:
     if not isinstance(data, dict):
         raise exc_cls(f"{context}: Invalid response from WeChat API")
     if "errcode" in data and data.get("errcode") not in [0, None]:

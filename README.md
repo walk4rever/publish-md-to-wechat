@@ -1,6 +1,6 @@
 # Publish MD to WeChat
 
-**v0.8.3** · [English](#english) | [中文](#中文)
+**v0.9.0** · [English](#english) | [中文](#中文)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -63,13 +63,12 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 # The Claude agent translates the article, saves to /tmp/translated_article.md, then publishes:
 .venv/bin/python3 scripts/wechat_publisher.py --md /tmp/translated_article.md --style swiss
 
-# 5. Generate vertical video (1080x1920)
-# First prepare tmp/slides.md + tmp/narration.json via agent/planner
+# 5. Generate a verified vertical video (1080x1920)
+# First prepare a directory with scenes.txt + gen_scenes.py via the agent.
 .venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
+  --project-dir /tmp/my-video \
   --duration 60 \
-  --style swiss
+  --out /tmp/my-video.mp4
 ```
 
 ### Features
@@ -83,7 +82,7 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 | **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
 | **Translation & Repost** | Agent-native full-article translation (English → Chinese) with attribution, then publish — no extra script |
 | **Video links (article mode)** | YouTube/Bilibili links → clean text links, not broken images |
-| **Video export** | Markdown → LLM planning → Slidev PNG export → narration (Volcengine TTS) → MP4 |
+| **Video export** | Agent-authored HTML scenes → Playwright PNG → Edge TTS → FFmpeg MP4 with burned-in subtitles |
 | **Credentials** | Project `.env` → global config → env vars (multi-level priority) |
 | **Preview** | `--dry-run` generates HTML locally, zero API calls |
 
@@ -143,47 +142,35 @@ English article.md
 
 ### Video Generation (WeChat 视频号)
 
-> Planning (outline/slides/narration) is handled by the caller/agent first.
-> `video_publisher.py` is execution-only: render Slidev + TTS + compose MP4.
+> The agent plans the story and writes a self-contained video project. The renderer produces
+> scene PNGs, Edge TTS narration, timed ASS subtitles, an MP4, and three inspection frames.
 
 ```bash
-# 1) Prepare assets first
-# - tmp/slides.md (Slidev markdown)
-# - tmp/narration.json ({"scenes": [...]})
+# 1) Create the bundled HTML-scene project, then edit its scenes and design.
+.venv/bin/python3 scripts/video_publisher.py --init-project /tmp/my-video
+# scenes.txt lines use: S1|spoken narration|optional display subtitle
 
-# 2) Dry run: validate inputs and pipeline setup
+# 2) Generate scene HTML and validate the project
 .venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
+  --project-dir /tmp/my-video \
   --duration 60 \
-  --style swiss \
+  --out /tmp/my-video.mp4 \
   --dry-run
 
-# 3) Export MP4 without narration
+# 3) Render the finished MP4
 .venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
+  --project-dir /tmp/my-video \
   --duration 60 \
-  --style swiss \
-  --no-tts \
-  --out article.mp4
-
-# 4) Export MP4 with Volcengine narration
-export VOLCANO_TTS_APPID=xxx
-export VOLCANO_TTS_ACCESS_TOKEN=xxx
-.venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
-  --duration 90 \
-  --style ink \
-  --voice zh_female_qingxin_moon_bigtts \
-  --out article.mp4
+  --out article.mp4 \
+  --voice zh-CN-YunxiNeural --rate +6%
 ```
 
 **Video dependencies:**
 - `ffmpeg` (system package)
-- `npx` (Node.js / npm runtime for Slidev CLI)
-- `websocket-client` (only when using TTS)
+- Python Playwright Chromium (`python -m playwright install chromium`)
+- `edge-tts` (installed by `./install.sh`)
+
+The renderer rejects narration that is more than 15% above or below the requested duration and writes `build/check_start.jpg`, `check_middle.jpg`, and `check_end.jpg`. Inspect these frames before treating a video as complete.
 
 ### Command Reference
 
@@ -288,12 +275,11 @@ cp env.example .env   # 填入 WECHAT_APP_ID 和 WECHAT_APP_SECRET
 .venv/bin/python3 scripts/wechat_publisher.py --md /tmp/translated_article.md --style swiss
 
 # 5. 生成竖屏视频（1080x1920）
-# 先由 agent/planner 生成 tmp/slides.md + tmp/narration.json
+# 先由 agent 创建包含 scenes.txt 和 gen_scenes.py 的视频项目目录
 .venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
+  --project-dir /tmp/my-video \
   --duration 60 \
-  --style swiss
+  --out /tmp/my-video.mp4
 ```
 
 ### 样式

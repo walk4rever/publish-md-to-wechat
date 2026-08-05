@@ -8,7 +8,9 @@ description: >
   "公众号推文"、"wechat article"、"微信公众号". Also trigger when the user asks to convert Markdown
   to a styled HTML document for WeChat, even if they don't say "publish" explicitly. Also trigger
   for translation/repost requests: "全文翻译"、"转载"、"translate and publish"、"repost"、or when the
-  source article is in English and the user wants to publish it to WeChat. This skill handles
+  source article is in English and the user wants to publish it to WeChat. Also trigger for
+  "视频号"、"短视频"、"竖屏视频"、"生成视频"、"video"、"short video"、or "WeChat Channels".
+  This skill handles
   credentials, image uploads, 13 style presets (3 core + 7 extend + unlimited custom), automatic
   cover generation, full-article translation, and draft creation end-to-end.
 ---
@@ -28,10 +30,10 @@ Use when user wants Markdown -> WeChat draft publishing.
 
 ### Mode B — Video Render (视频号)
 Use when user wants vertical MP4 generation.
-- Inputs (required): pre-generated `tmp/slides.md` + `tmp/narration.json`
+- Inputs: source article plus duration, tone, audience, visual style, and optional Edge TTS voice
 - Output: local `.mp4`
 - Command family: `scripts/video_publisher.py`
-- **Important:** This mode is execution-only. Planning (outline/slide content/narration writing) is done by caller/agent before invoking the script.
+- **Important:** The agent plans the video and creates the project files; the script renders, narrates, subtitles, composes, and captures validation frames.
 
 ### Mode C — Translation & Repost (全文翻译/转载)
 Use when user wants to translate a foreign-language article and publish it to WeChat.
@@ -185,19 +187,23 @@ description: Short summary for WeChat article list.
 ## Phase 4B: Generate WeChat Video (视频号)
 
 By default, ALWAYS generate video WITH TTS voice unless explicitly told not to.
-Ensure `VOLCANO_TTS_APPID` and `VOLCANO_TTS_ACCESS_TOKEN` are in the `.env` file, or load them from the environment.
-
 **Important:** Before generating the video, you MUST ask the user for the following preferences if they haven't provided them explicitly in their request:
 1. **Target Duration** (e.g., 30s, 60s, 90s)
 2. **Narration Tone** (e.g., 专业克制, 轻松幽默, 热情洋溢)
 3. **Target Audience** (e.g., AI开发者, 产品经理, 大众)
 4. **Visual Style** (e.g., swiss, ink, minimal)
-5. **TTS Voice** (Optional, default to `zh_male_m191_uranus_bigtts` or let user pick)
+5. **TTS Voice** (optional; default `zh-CN-YunxiNeural`)
 
 **Do not guess or assume these 5 parameters.** If the user simply says "convert to video", you MUST stop and ask them to specify duration, tone, audience, and style first.
 
-**Step 1: Agent Plans Outline and Narration (DO NOT use python scripts for LLM calls)**
-Read the Markdown file. Act as an expert presentation editor. You (the Agent) MUST natively generate the `tmp/slides.md` (Slidev format) and `tmp/narration.json` based on the user's requested duration, tone, audience, and style.
+**Step 1: Agent Plans Scenes (DO NOT use Python scripts for LLM calls)**
+Read the Markdown file. Act as an expert presentation editor. Natively create a video project directory containing `scenes.txt` and `gen_scenes.py`, based on the requested duration, tone, audience, and visual style.
+
+Create the project first; do not start from a blank Python file:
+```bash
+.venv/bin/python3 scripts/video_publisher.py --init-project /tmp/video-project
+```
+Then edit `/tmp/video-project/scenes.txt` and `/tmp/video-project/gen_scenes.py`. The bundled generator is the visual baseline: retain its 1080×1920 canvas, brand line, page number, bottom bar, contrast, and common CSS; adapt the copy and layouts for the story.
 
 **CRITICAL: Narration Quality Rules (avoid filler/repetition)**
 - Audience/tone are **global constraints**, not per-scene slogans. Do **not** repeatedly say phrases like `面向AI开发者` / `关键在于` in every scene.
@@ -213,42 +219,30 @@ Read the Markdown file. Act as an expert presentation editor. You (the Agent) MU
 3. Ensure each scene has a unique takeaway in one line.
 4. Remove all non-informational filler.
 
-**CRITICAL: Slidev Formatting for Vertical Video (9:16)**
-Because the output is a mobile vertical video, default Slidev text is too small and pushed to the top. You MUST inject custom CSS and layout directives into `tmp/slides.md` to make it look professional:
-- Add `aspectRatio: 9/16` and `canvasWidth: 1080` to the frontmatter.
-- Use `theme: seriph` for `swiss`, `default` for others.
-- Add an appealing Unsplash background to the title slide (e.g., `background: https://images.unsplash.com/photo-...`).
-- Use `layout: center` and `class: text-center` for all slides to center content.
-- Inject a `<style>` block in the title slide to make `h1` very large (e.g., `5rem`), `h2` large (e.g., `3rem`), and optionally add a gradient text effect.
-- Inject `<style>` blocks in content slides to make `li` and `p` large enough to read on mobile (e.g., `2.5rem`, `line-height: 2`).
-
-- `tmp/narration.json` must align with the scenes in the slides.
-  ```json
-  {
-    "scenes": [
-      { "title": "Title", "narration": "大家好...", "scene_type": "title" },
-      { "title": "Point 1", "narration": "第一点...", "scene_type": "content" }
-    ]
-  }
-  ```
+**CRITICAL: HTML Scene Formatting for Vertical Video (9:16)**
+- `scenes.txt` contains one ordered scene per line: `S1|spoken narration|optional written subtitle`.
+- `gen_scenes.py` must generate `scenes/S1.html`, `scenes/S2.html`, and so on at 1080×1920.
+- Use a shared CSS system in the generator: stable brand line, page number, bottom information bar, high-contrast text, and a restrained accent color.
+- The spoken and subtitle text can differ for URLs and English terms. For example, speak `air7 点 fun` but subtitle `air7.fun`.
+- Keep each scene to one idea. The script derives timing from the generated audio, adds a short breathing interval, and burns subtitles into the video.
 
 **Step 2: Render and Compose (execution-only)**
-Use the script to export slides, synthesize TTS, and compose the final MP4.
-Do **not** pass `--md` for planning; Mode B requires pre-generated slides + narration.
+Use the script to generate HTML, capture PNG scenes, synthesize narration, create subtitles, compose the MP4, and capture start/middle/end QA frames.
 
 ```bash
 # 导出 MP4
 .venv/bin/python3 scripts/video_publisher.py \
-  --slides tmp/slides.md \
-  --narration tmp/narration.json \
-  --duration 60 \
-  --style [STYLE] \
-  --voice zh_male_m191_uranus_bigtts \
-  --no-verify-ssl \
+  --project-dir /tmp/video-project \
+  --duration [SECONDS] \
+  --voice zh-CN-YunxiNeural \
+  --rate +6% \
   --out [OUTPUT.mp4]
 ```
 
-依赖：`ffmpeg`、`npx`（Node.js）用于 Slidev 导出，使用配音时额外需要 `websocket-client`。
+依赖：`ffmpeg`、Python Playwright Chromium 和 `edge-tts`。
+
+**Step 3: Mandatory visual QA**
+Open `build/check_start.jpg`, `build/check_middle.jpg`, and `build/check_end.jpg`. Check subtitle line breaks, readable contrast, overflowing copy, spelling, and narration-to-scene alignment. If any frame fails, modify only the affected scene in `scenes.txt` / `gen_scenes.py`, then rerun the renderer. Do not report a video as complete without passing this check.
 
 ---
 

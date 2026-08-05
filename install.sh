@@ -30,13 +30,13 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Install Node dependencies for Slidev/video export
+# Install Node dependencies for formula rendering
 if [ "${SKIP_NODE_INSTALL:-0}" = "1" ]; then
     echo "⏭️  SKIP_NODE_INSTALL=1, skipping npm dependency install."
 else
     if [ -f "package.json" ]; then
         if command -v npm &> /dev/null; then
-            echo "📦 Installing Node dependencies (Slidev + Playwright-Chromium)..."
+            echo "📦 Installing Node dependencies (MathJax formula renderer)..."
             if [ -f "package-lock.json" ]; then
                 npm ci
             else
@@ -48,7 +48,7 @@ else
     fi
 fi
 
-# Install Playwright browser runtime (required for video slide capture)
+# Install Playwright browser runtime (required for HTML scene capture)
 if [ "${SKIP_PLAYWRIGHT_INSTALL:-0}" = "1" ]; then
     echo "⏭️  SKIP_PLAYWRIGHT_INSTALL=1, skipping Chromium install."
 else
@@ -60,5 +60,5 @@ fi
 echo "=================================================="
 echo "✨ Setup complete!"
 echo "💡 Article publish: source .venv/bin/activate && python3 scripts/wechat_publisher.py ..."
-echo "💡 Video export:   source .venv/bin/activate && python3 scripts/video_publisher.py --md article.md --no-tts"
+echo "💡 Video export:   python3 scripts/video_publisher.py --project-dir /path/to/video --duration 60 --out video.mp4"
 echo "=================================================="
