@@ -105,7 +105,8 @@ def refine_title(md_content: str, provided_title: Optional[str] = None) -> str:
             try:
                 import yaml as _yaml
                 fm = _yaml.safe_load(fm_match.group(1)) or {}
-                title = str(fm.get("wechat", fm.get("title", ""))).strip() or None
+                # 微信标题三级回落：wechat_title（新规范）→ wechat（旧档）→ title
+                title = str(fm.get("wechat_title", fm.get("wechat", fm.get("title", "")))).strip() or None
             except Exception:
                 pass
 
@@ -448,9 +449,12 @@ class WeChatRenderer(mistune.HTMLRenderer):
         super().__init__(escape=False)
         self.style = style
         self.style_name = style_name
+        # 图注检测：image() 置位，紧随其后的整段斜体按图注渲染（而非引用框）
+        self._after_image = False
 
     def heading(self, text, level):
         s = self.style
+        self._after_image = False
 
         # Custom styles: use extracted structural hints
         if self.style_name.startswith("custom-"):
@@ -489,10 +493,12 @@ class WeChatRenderer(mistune.HTMLRenderer):
                         f'<h1 style="font-size: 28px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h1></section>\n')
             elif level == 2:
                 return (f'<section style="margin: 32px 0 12px;">'
-                        f'<h2 style="font-size: 22px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h2></section>\n')
+                        f'<h2 style="font-size: 22px; font-weight: bold; color: {s["text"]}; margin: 0;">'
+                        f'<span style="color: {s["accent"]}; font-size: 15px; margin-right: 8px;">■</span>{text}</h2></section>\n')
             elif level == 3:
-                return (f'<section style="margin: 25px 0 10px; border-left: 4px solid {s["accent"]}; padding-left: 12px;">'
-                        f'<h3 style="font-size: 19px; font-weight: bold; color: {s["text"]}; margin: 0;">{text}</h3></section>\n')
+                return (f'<section style="margin: 25px 0 10px;">'
+                        f'<h3 style="font-size: 19px; font-weight: bold; color: {s["text"]}; margin: 0;">'
+                        f'<span style="color: {s["accent"]}; font-size: 12px; margin-right: 6px;">■</span>{text}</h3></section>\n')
         
         # Original slide-like styles for other presets
         # Added max-width to make horizontal lines shorter and more elegant
@@ -517,7 +523,9 @@ class WeChatRenderer(mistune.HTMLRenderer):
             return text + '\n'
 
         s = self.style
-        
+        after_image = self._after_image
+        self._after_image = False
+
         # Check if the entire paragraph is an italicized quote (starts with <em or <strong><em)
         is_quote = False
         inner_text = ""
@@ -538,13 +546,18 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 is_quote = True
                 inner_text = stripped[tag_end + 1:-9]
 
+        if is_quote and after_image:
+            # 图片正下方的整段斜体 = 图注（figcaption），居中灰小字，不套引用框
+            return (f'<p style="text-align: center; color: #888888; font-size: 13px; '
+                    f'line-height: 1.7; margin: 6px 0 22px; font-style: normal;">{inner_text}</p>\n')
+
         if is_quote:
             # Render as a beautiful styled quote box instead of italic text
             if self.style_name == "swiss":
                 # Swiss style quote: clean, light gray background, left red border, normal text style
                 return (f'<section style="margin: 22px 0; padding: 16px 20px; background-color: #f5f5f5; '
                         f'border-left: 3px solid {s["accent"]}; border-radius: 0 4px 4px 0; '
-                        f'color: #555555; font-size: 15px; line-height: 1.75; font-style: normal;">'
+                        f'color: {s["secondary"]}; font-size: 15px; line-height: 1.75; font-style: normal;">'
                         f'{inner_text}</section>\n')
             else:
                 bg = "#f9f9f9" if s["bg"] == "#ffffff" else "rgba(255,255,255,0.03)"
@@ -567,6 +580,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
 
     def block_quote(self, text):
         s = self.style
+        self._after_image = False
 
         # Check for Obsidian-style callouts (e.g. > [!TIP] Title or > [!NOTE]- Title)
         callout_match = re.search(r'\[\!(TIP|IMPORTANT|NOTE|WARNING|CAUTION|OVERVIEW|FACTS|TIPS|VALUE|INVERSE|TAKEAWAY|HIGHLIGHTS)\][-+]?\s*(.*?)((?:<br\s*/?>)|\n|(?:</p>))', text, re.DOTALL | re.IGNORECASE)
@@ -745,9 +759,11 @@ class WeChatRenderer(mistune.HTMLRenderer):
                     f'font-size: 15px; line-height: 1.8; font-style: italic;">{text}</section>\n')
 
         if self.style_name == "swiss":
-            return (f'<section style="margin: 25px 0; padding: 16px 20px; background-color: #f5f5f5; '
-                    f'border-left: 3px solid #bbbbbb; color: {s["secondary"]}; font-size: 15px; line-height: 1.7; '
-                    f'font-style: italic;">'
+            # Match the whole-italic-paragraph quote box: red left border, upright text
+            # (italic CJK renders as a slanted pseudo-italic and reads poorly).
+            return (f'<section style="margin: 22px 0; padding: 16px 20px; background-color: #f5f5f5; '
+                    f'border-left: 3px solid {s["accent"]}; border-radius: 0 4px 4px 0; '
+                    f'color: {s["secondary"]}; font-size: 15px; line-height: 1.75; font-style: normal;">'
                     f'{text}</section>\n')
 
         # ink: subtle 2px line for understated elegance
@@ -817,7 +833,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
         wrapped_code = _wrap_code_lines(code)
         if self.style_name == "swiss":
             escaped_code = _escape(wrapped_code)
-            return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f0f0f0; '
+            return (f'<section style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; '
                     f'border-radius: 0; overflow-x: auto; border-left: 3px solid #dddddd; border-top: none; '
                     f'border-right: none; border-bottom: none;">'
                     f'<pre style="margin: 0; font-family: \'JetBrains Mono\', Menlo, Monaco, Consolas, monospace; '
@@ -834,6 +850,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
                 f'color: {s["text"]}; white-space: pre-wrap;">{escaped_code}</pre></section>\n')
 
     def block_code(self, code, info=None):
+        self._after_image = False
         # Render Mermaid diagrams as images via mermaid.ink
         if info and info.strip() == "mermaid":
             import base64
@@ -865,6 +882,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
         return '\n'.join(html_parts)
 
     def list(self, text, ordered, **kwargs):
+        self._after_image = False
         margin = "16px 0" if self.style_name == "swiss" else "15px 0"
         return f'<section style="margin: {margin};">{text}</section>\n'
 
@@ -880,20 +898,30 @@ class WeChatRenderer(mistune.HTMLRenderer):
         else:
             bullet, bullet_size = "■", "14px"
         margin_right = "8px"
-        
+
+        stripped = text.strip()
+        paragraph = re.fullmatch(r"<p\b[^>]*>(.*?)</p>", stripped, re.DOTALL)
+        if paragraph:
+            text = paragraph.group(1)
+        has_block_content = bool(re.search(r"<(?:p|section|div|ul|ol|blockquote|pre|table)\b", text))
+        content_tag = "section" if has_block_content else "span"
+
         font_family = f' font-family: {s["font"]};' if self.style_name.startswith("custom-") and s.get("font") else ""
         return (f'<section style="margin: 8px 0; display: flex; align-items: flex-start;">'
                 f'<span style="color: {s["accent"]}; font-weight: bold; margin-right: {margin_right}; '
-                f'font-size: {bullet_size}; line-height: 1.2;">{bullet}</span>'
-                f'<section style="font-size: 15px; line-height: 1.6; color: {s["text"]};{font_family}">{text}</section></section>\n')
+                f'font-size: {bullet_size}; line-height: 1.2; flex-shrink: 0;">{bullet}</span>'
+                f'<{content_tag} style="flex: 1; min-width: 0; font-size: 15px; line-height: 1.6; color: {s["text"]};{font_family}">'
+                f'{text}</{content_tag}></section>\n')
 
     def thematic_break(self):
-        """Render horizontal rule (--- in Markdown) as empty.
-        
-        H2 headings already have border-top decoration, so we skip ---
-        to avoid duplicate lines when --- precedes a heading.
+        """Render --- as a quiet centered separator.
+
+        Swiss headings carry no border lines, so dropping --- would silently
+        erase the author's section breaks; render a restrained dot separator
+        for all styles instead.
         """
-        return ''
+        return ('<p style="text-align: center; color: #bbbbbb; letter-spacing: 6px; '
+                'font-size: 14px; margin: 28px 0;">· · ·</p>\n')
 
     def strong(self, text):
         s = self.style
@@ -903,11 +931,13 @@ class WeChatRenderer(mistune.HTMLRenderer):
     def codespan(self, text):
         s = self.style
         if self.style_name == "swiss":
-            return f'<code style="background: #f3f3f3; padding: 2px 4px; font-size: 13px; border-radius: 3px; color: {s["accent"]}; font-family: {s["font"]};">{text}</code>'
+            return (f'<code style="background: #f5f5f5; padding: 2px 5px; font-size: 13px; border-radius: 3px; '
+                    f'color: {s["text"]}; font-family: \'JetBrains Mono\', Menlo, Monaco, Consolas, monospace;">{text}</code>')
         bg = "rgba(255,255,255,0.1)" if s["bg"] != "#ffffff" else "#f0f0f0"
         return f'<code style="background: {bg}; padding: 2px 4px; font-size: 13px; border-radius: 3px;">{text}</code>'
 
     def table(self, text):
+        self._after_image = False
         s = self.style
         border_color = "#dddddd" if self.style_name == "swiss" else s["text"]
         return (f'<section style="margin: 25px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">'
@@ -958,6 +988,7 @@ class WeChatRenderer(mistune.HTMLRenderer):
             caption = ""
             
         caption_html = f'<p style="color: #888; font-size: 13px; margin-top: 10px;">{caption}</p>' if caption else ""
+        self._after_image = True
         return (f'<section style="margin: 25px 0; text-align: center;">'
                 f'<img src="{url}" alt="{alt}" style="max-width: 100%; border-radius: 8px; '
                 f'box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: block; margin: 0 auto;">'
@@ -1236,7 +1267,7 @@ class WeChatPublisher:
         
         # Load custom styles and merge with built-in styles
         self.STYLES = self._load_custom_styles()
-        logger.info(f"✓ Loaded {len(self.STYLES)} styles ({len(self.STYLES) - 10} custom)")
+        logger.info(f"✓ Loaded {len(self.STYLES)} styles ({len(self.STYLES) - len(BUILTIN_STYLES)} custom)")
         
         # Configure SSL
         configure_ssl(verify_ssl)
@@ -1601,6 +1632,14 @@ class WeChatPublisher:
                         k, v = line.split(':', 1)
                         frontmatter[k.strip()] = v.strip()
 
+        # 1b. If frontmatter already carries a title, drop the first in-body H1 —
+        # WeChat displays the title above the article, so a repeated H1 duplicates it.
+        if any(frontmatter.get(k) for k in ("wechat_title", "wechat", "title")):
+            new_body, n = re.subn(r'^#[ \t]+[^\n]*\n?', '', content_body, count=1, flags=re.M)
+            if n:
+                logger.info("Dropped first in-body H1 (title already shown by WeChat)")
+                content_body = new_body
+
         # 2. Pre-process: Convert Obsidian WikiLink ![[img.png|alias]] to standard MD ![alias](<img.png>)
         def obsidian_repl(match):
             path_part = match.group(1).strip()
@@ -1664,10 +1703,11 @@ class WeChatPublisher:
             # We filter some internal or huge fields, only show relevant ones
             display_keys = ['source', 'author', 'published', 'tags', 'description']
             # Fallbacks: alias fields commonly used in Vault articles
-            aliases = {'published': 'date', 'description': 'excerpt'}
+            aliases = {'published': ['date', 'created'], 'description': ['excerpt']}
+            key_labels = {'source': '来源', 'author': '作者', 'published': '发布', 'tags': '标签', 'description': '摘要'}
             for k in display_keys:
-                resolved_k = k if k in frontmatter else aliases.get(k, k)
-                if resolved_k not in frontmatter:
+                resolved_k = k if k in frontmatter else next((c for c in aliases.get(k, []) if c in frontmatter), None)
+                if not resolved_k:
                     continue
                 v = frontmatter[resolved_k]
                 # Handle lists (like tags or authors)
@@ -1675,11 +1715,11 @@ class WeChatPublisher:
                     v = ", ".join(map(str, v))
                 # Strip Obsidian [[wikilink]] syntax
                 v = re.sub(r'\[\[([^\]]+)\]\]', r'\1', str(v))
-                fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]}; text-transform: uppercase;">{k}:</strong> {v}</div>')
-            
+                fm_items.append(f'<div style="margin: 4px 0; font-size: 13px; color: {style["secondary"]};"><strong style="color: {style["accent"]};">{key_labels[k]}：</strong> {v}</div>')
+
             if fm_items:
                 fm_html = (f'<section style="margin: 0 0 30px; padding: 20px; border: 1px solid #eeeeee; '
-                           f'background-color: #fafafa; border-radius: 4px;">'
+                           f'background-color: #f5f5f5; border-radius: 4px;">'
                            f'{" ".join(fm_items)}</section>')
 
         # ULTIMATE PROTECTION v2: Use Placeholders to bypass Markdown parser
@@ -1847,15 +1887,9 @@ class WeChatPublisher:
         
         # Wrap with global container
         header = f'<section style="background-color: {style["bg"]}; padding: 25px 15px; font-family: {style["font"]}; color: {style["text"]};">'
-        if style_name == "swiss":
-            footer = (f'<section style="margin-top: 50px; text-align: center; border-top: 1px solid #eeeeee; '
-                     f'padding-top: 20px; font-size: 12px; font-weight: 600; letter-spacing: 1px; '
-                     f'color: {style["secondary"]}; text-transform: uppercase;">PUBLISHED VIA AIR7.FUN | STYLE: {style_name.upper()}</section></section>')
-        else:
-            footer = (f'<section style="margin-top: 60px; text-align: center; border-top: 5px solid {style["text"]}; '
-                     f'padding-top: 25px; font-size: 14px; font-weight: 900; letter-spacing: 2px; '
-                     f'text-transform: uppercase;">PUBLISHED VIA AIR7.FUN | STYLE: {style_name.upper()}</section></section>')
-        
+        # No brand footer — published articles shouldn't expose toolchain internals.
+        footer = '</section>'
+
         full_html = header + fm_html + main_html + footer
         
         # Post-process: clean up links and enforce data-src for lazy loading in WeChat
@@ -1933,8 +1967,8 @@ class WeChatPublisher:
 
         # Debug: Write the exact html_content about to be sent to WeChat
         try:
-            debug_path = "/Users/rafael/R129/Vault/_temp/wechat_sent_payload.html"
-            os.makedirs(os.path.dirname(debug_path), exist_ok=True)
+            import tempfile
+            debug_path = os.path.join(tempfile.gettempdir(), "wechat_sent_payload.html")
             with open(debug_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
             logger.info(f"Debug: Wrote final HTML payload to {debug_path}")
@@ -2177,7 +2211,11 @@ def main():
             logger.info("✓ Dry-run complete (no WeChat API calls made)")
             return 0
         
-        fm_source = str(frontmatter.get("source", "") or "").strip()
+        # 阅读原文：新规范读 source_url；旧档兼容 source（彼时语义即 URL，需 http 开头防误入来源名）
+        fm_source = str(frontmatter.get("source_url", "") or "").strip()
+        if not fm_source:
+            _legacy_source = str(frontmatter.get("source", "") or "").strip()
+            fm_source = _legacy_source if _legacy_source.startswith("http") else ""
         thumb_id = _with_retry(lambda: publisher.upload_thumb(thumb_path), context="upload_thumb")
         crop_235_1, crop_1_1 = compute_wechat_cover_crops(thumb_path)
         result = _with_retry(lambda: publisher.create_draft(

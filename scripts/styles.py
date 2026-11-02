@@ -1006,7 +1006,7 @@ BUILTIN_STYLES = {
     "swiss": {
         "category": "core",
         "desc": "瑞士国际主义风格。白底红色，网格感强，专业克制。适合技术文章、产品更新、官方通知。",
-        "bg": "#ffffff", "accent": "#e62e2e", "text": "#000000", "secondary": "#666666",
+        "bg": "#ffffff", "accent": "#e62e2e", "text": "#1a1a1a", "secondary": "#666666",
         "font": "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif", "border_width": "3px",
     },
     "editorial": {
