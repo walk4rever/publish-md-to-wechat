@@ -33,3 +33,7 @@ Use the established Conventional Commit style: `feat(video): ...`, `fix(publishe
 ## Security & Configuration
 
 Copy `env.example` to `.env`; never commit credentials, access tokens, or generated API responses. Treat `--no-verify-ssl` as a local troubleshooting option, not a default.
+
+## Synchronized Installation
+
+- `~/.agents/skills/publish-md-to-wechat` is a **symlink to this repository** (2026-11-02, replacing the former manual dual-copy sync). Both pod-pipe and the standalone skill therefore use this copy; renderer fixes and regression tests need to land here only once. The skill's `.env` credentials are this repo's `.env` (verified identical at migration). The pre-symlink copy is backed up at `~/.agents/backups/publish-md-to-wechat.bak-20261102`.

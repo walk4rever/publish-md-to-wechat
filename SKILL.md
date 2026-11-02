@@ -95,8 +95,12 @@ The publisher renders a metadata block at the top of every article using these s
 | `source` | 来源 | — | ⚠️ add `source: AI-DIVE · ai.air7.fun` for Vault articles |
 
 **Script fallbacks (built-in):** The publisher script automatically falls back:
-- `published` → `date` if `published` is absent
+- `published` → `date` → `created` (first present wins)
 - `description` → `excerpt` if `description` is absent
+
+The metadata box labels are rendered in Chinese (来源/作者/发布/标签/摘要), and when the
+frontmatter carries a title, the first in-body H1 is dropped (WeChat already shows the
+title above the article).
 
 So these alias pairs do not need to be manually patched before publishing. The remaining three
 (`author`, `tags`, `source`) have no automatic alias — add them to frontmatter if missing.
@@ -157,6 +161,26 @@ Propose the style with a one-line reason. Skip if the user already specified.
   --md [PATH] --style [STYLE] --dry-run --out-html /tmp/preview.html
 open /tmp/preview.html
 ```
+
+---
+
+## Phase 3B: 敏感词扫描（必做，2026-08-31 血泪教训）
+
+**发布到微信公众号草稿箱之前，必须先跑敏感词扫描。** 微信审核红线「不得不当使用国家机关、国家机关工作人员的名义或形象」
+会拦截直呼国家领导人姓名或具体国家机关实名的内容（VC20260817 因 Harry 一句调侃"我觉得习近平不会给你发月度最佳员工奖"被拒）。
+
+```bash
+.venv/bin/python3 scripts/sensitive_scan.py --md [PATH]
+```
+
+- 退出码 **0** = 无红线词，可继续发布。
+- 退出码 **1** = 发现 🔴 红线词，发布前必须改写（见下）。
+- `--strict` 连广义词（"中国政府""国家形象"等）也打印完整语境，供人工判断。
+
+**红线词处理规则：**
+- 用「国家/官方/通用主体」等中性词替代领导人姓名或具名机构；
+- 或删除整句调侃、改用无具体指向的表述。
+- 源文件保持纯净（保留忠实原文），只在微信临时构建文件里改写——同 aidive_url/wechat_media_id 适配边界。
 
 ---
 

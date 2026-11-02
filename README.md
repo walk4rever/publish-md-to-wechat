@@ -75,11 +75,12 @@ cp env.example .env   # Add WECHAT_APP_ID and WECHAT_APP_SECRET
 
 | Category | Capability |
 |----------|-----------|
-| **Rendering** | AST-powered via `mistune` 3.x — nested lists, tables, code blocks, footnotes |
+| **Rendering** | AST-powered via `mistune` 3.x — nested lists, tables, code blocks, footnotes, callout cards, image captions, `---` separators |
 | **Styles** | 3 core classics + 7 extended + unlimited custom styles via URL replication (Playwright-powered: extracts computed colors + heading/blockquote structure) |
 | **Images** | Local files, external URLs, Obsidian WikiLinks — auto-uploaded to WeChat CDN |
 | **Covers** | Auto-generated branded PNG from title + style (Pillow) |
-| **Metadata** | YAML frontmatter auto-extraction (title, author, description) |
+| **Metadata** | YAML frontmatter auto-extraction (title, author, description); Chinese-labeled metadata box with `date`/`created`/`excerpt` fallbacks; duplicate in-body H1 auto-dropped |
+| **Compliance** | Pre-publish sensitive-word scanner (`sensitive_scan.py`) flags WeChat review red-line terms |
 | **Translation & Repost** | Agent-native full-article translation (English → Chinese) with attribution, then publish — no extra script |
 | **Video links (article mode)** | YouTube/Bilibili links → clean text links, not broken images |
 | **Video export** | Agent-authored HTML scenes → Playwright PNG → Edge TTS → FFmpeg MP4 with burned-in subtitles |
@@ -244,14 +245,15 @@ echo 'WECHAT_APP_ID=xxx' > ~/.config/publish-md-to-wechat/.env
 
 ### 功能
 
-- **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块）
+- **AST 渲染引擎** — `mistune` 3.x 处理复杂 Markdown（嵌套列表、表格、代码块、脚注、评注卡片、图注、`---` 分隔线）
 - **13 种视觉样式** — 3 经典核心 + 7 扩展 + 无限自定义
 - **深度样式复刻** — Playwright 提取计算后样式（非 inline CSS），自动识别标题结构（色块/左边线/下划线）和引用块结构，保存为可复用预设
 - **全文翻译/转载** — Claude Agent 原生全文翻译（英→中），保留所有 Markdown 结构和代码块，自动添加原文出处，无需额外脚本
+- **敏感词扫描** — 发布前扫描微信审核红线词（`sensitive_scan.py`），命中即阻断
 - **Obsidian 兼容** — 原生支持 `![[WikiLink]]` 图片语法
 - **智能图片上传** — 本地图片、外部 URL 自动上传微信 CDN
 - **封面自动生成** — 基于标题和样式通过 Pillow 生成品牌 PNG 封面
-- **YAML Frontmatter** — 自动提取标题、作者、摘要
+- **YAML Frontmatter** — 自动提取标题、作者、摘要；元信息框中文标签，兼容 `date`/`created`/`excerpt` 字段回落；正文重复 H1 自动去重
 - **视频链接检测** — YouTube/Bilibili 链接渲染为文字链接
 - **视频生成** — Markdown 自动生成竖屏 MP4（切片、截图、配音、合成）
 - **凭证管理** — 项目级、全局级或环境变量级凭证解析
